@@ -4,11 +4,12 @@ import { NODE, NODES, EDGES, CANAL } from '../sim/world';
 import { LINK_THRESHOLD, pathLength, signalAt, stockTotal, stormLevel, survivorSignal, zoneOf, darkness } from '../sim/core';
 import { canEndDay, validTargets } from '../sim/sim';
 import { UPGRADES, storageCap, upgradeBlocker } from '../sim/state';
+import { LAST_DAY, mission, objectiveStatus } from '../sim/missions';
 import { MODE_LABEL, NPCS, ORDER_LABEL, fmtClock, fmtTime, nodeName } from '../sim/text';
 import { storedTier, storeTier, type Tier } from '../render/quality';
 import { audio } from './audio';
 
-export type Screen = 'title' | 'radio' | 'roster' | 'shelter' | 'debrief' | 'settings' | null;
+export type Screen = 'title' | 'radio' | 'roster' | 'shelter' | 'debrief' | 'ending' | 'settings' | null;
 
 export interface GameApi {
   s: GameState;
@@ -78,6 +79,7 @@ export interface Mood {
 
 const moodOf = (sv: Survivor): Mood => ({ hurt: sv.health < 55, afraid: sv.fear > 60 || sv.mode === 'flee', lost: sv.alive && !sv.linked, dead: !sv.alive });
 
+// (portraits)
 const SKIN: Record<string, string> = { mara: '#c48d69', jo: '#d6ab8b', lena: '#e8c6aa', ines: '#b98562', patient: '#d9c2ae', sacha: '#cfa07e', vogel: '#d2b7a0' };
 
 /** Hand-drawn SVG busts. The face reacts to the survivor's state. */
@@ -277,7 +279,7 @@ export class Ui {
 
   close() {
     if (this.g.s.awaiting !== null && this.screen === 'radio') return;
-    this.open(this.g.s.phase === 'debrief' ? 'debrief' : null);
+    this.open(this.g.s.phase === 'debrief' ? 'debrief' : this.g.s.phase === 'ending' ? 'ending' : null);
   }
 
   onRadio(msg: RadioMessage) {
@@ -372,13 +374,13 @@ export class Ui {
     const sel = g.selected ? s.survivors.find((v) => v.id === g.selected) : null;
     const sig = sel ? (sel.alive ? survivorSignal(s, sel) : 0) : signalAt(s, 'cross_e');
     const left = s.duration - s.time;
-    const med = s.delivered.medicine;
+    const obj = objectiveStatus(s);
     this.set(
       this.el.status,
       `<div class="sig">${bars(sig)}</div>
        <div class="sig"><small>${sel ? 'Signal ' + sel.short : 'Réseau'}${stormLevel(s) > 0.3 ? ' · orage' : ''}</small><b>${sel && !sel.linked ? 'PERDU' : Math.round(sig * 100) + ' %'}</b></div>
        <div class="clock"><small>Jour ${s.day} · ${fmtClock(s.time)}</small><b>${left > 0 ? 'Nuit dans ' + fmtTime(left) : 'Nuit'}</b><div class="timebar"><i style="width:${Math.min(100, (s.time / s.duration) * 100).toFixed(1)}%"></i></div></div>
-       <div class="obj-line ${med >= 2 ? 'done' : ''}">Objectif<br><b>Médicaments ${med}/2</b>${med >= 2 ? ' — rentrez tous' : ''}</div>`,
+       <div class="obj-line ${obj.done ? 'done' : ''}">Objectif<br><b>${obj.label}</b>${obj.detail ? ' — ' + obj.detail : ''}</div>`,
     );
     const end = canEndDay(s) && s.time > 20;
     const waiting = s.awaiting !== null;
@@ -617,7 +619,7 @@ export class Ui {
       const m = await_ ?? this.lastMsg ?? s.radio[s.radio.length - 1];
       const sv = m ? s.survivors.find((v) => v.id === m.from) : undefined;
       const who = sv ? `<b>${sv.name}</b><small>${sv.role}</small>` : `<b>${m?.fromName ?? 'ECHO-7'}</b><small>${m?.from === 'unknown' ? 'Fréquence non identifiée' : 'Station radio'}</small>`;
-      html = `<div class="sheet">${head('Transmission · canal 7', `Jour ${s.day} · ${fmtClock(m?.time ?? s.time)}`, !await_)}<div class="body">
+      html = `<div class="sheet">${head(await_?.incident === 'briefing' ? `Jour ${s.day} · ${mission(s).title}` : 'Transmission · canal 7', `Jour ${s.day} · ${fmtClock(m?.time ?? s.time)}`, !await_)}<div class="body">
         ${m ? `<div class="radio"><div class="who"><div class="portrait">${portrait(sv ? sv.id : m.from === 'unknown' ? 'unknown' : 'echo', sv?.color, sv ? { ...moodOf(sv), lost: m.signal < 0.34 } : {})}</div><div>${who}<div class="sigrow">${bars(m.signal)} ${Math.round(m.signal * 100)} %${m.delayed ? ' · message différé' : ''}</div></div><canvas id="wave" width="300" height="68" data-sig="${m.signal}"></canvas></div>
         <div><p class="msg mono" id="rmsg" data-id="${m.id}" data-act="skip"></p>
         ${await_ ? `<div class="choices">${await_.choices!.map((c) => `<button class="choice" data-act="choice" data-arg="${c.id}"><b>${c.label}</b><small>${c.hint}</small></button>`).join('')}</div>` : ''}</div></div>` : '<p>Aucune transmission.</p>'}
@@ -654,7 +656,12 @@ export class Ui {
           <div><h4>Signaux non résolus</h4>${list(d.unresolved, 'Aucun. La fréquence est silencieuse.')}</div>
           <div style="grid-column:1/-1"><h4>Conséquences</h4>${list(d.consequences, '—')}</div>
         </div></div>
-        <div class="actions"><button class="btn" data-act="open" data-arg="roster">${ICON.team} Équipe</button><button class="btn" data-act="open" data-arg="shelter">${ICON.home} Abri</button><button class="btn ghost" data-act="new">Nouvelle partie</button>${alive ? '<button class="btn primary" data-act="nextday">Jour suivant</button>' : ''}</div></div>`;
+        <div class="actions"><button class="btn" data-act="open" data-arg="roster">${ICON.team} Équipe</button><button class="btn" data-act="open" data-arg="shelter">${ICON.home} Abri</button><button class="btn ghost" data-act="new">Nouvelle partie</button>${alive || d.day >= LAST_DAY ? `<button class="btn primary" data-act="nextday">${d.day >= LAST_DAY ? 'Épilogue' : 'Jour suivant'}</button>` : ''}</div></div>`;
+    } else if (this.screen === 'ending' && s.ending) {
+      html = `<div class="sheet debrief">${head('Dernier signal · épilogue', `${LAST_DAY} jours`, false)}<div class="body ending">
+        ${s.ending.map((l, i) => `<p style="animation-delay:${(i * 0.9).toFixed(1)}s">${esc(l)}</p>`).join('')}
+        ${s.rescued.length ? `<div class="npcs" style="margin-top:12px">${[...new Set(s.rescued)].map((n) => NPCS[n]).filter(Boolean).map((n) => `<div class="npc"><div class="portrait">${portrait(n.id, n.color)}</div><div><b>${n.name}</b><small>${n.role}</small></div></div>`).join('')}</div>` : ''}
+        </div><div class="actions"><button class="btn" data-act="open" data-arg="roster">${ICON.team} Équipe</button><button class="btn primary" data-act="new">Nouvelle partie</button></div></div>`;
     } else if (this.screen === 'settings') {
       const tier = storedTier();
       html = `<div class="sheet">${head('Réglages')}<div class="body"><div class="settings">

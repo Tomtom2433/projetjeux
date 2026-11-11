@@ -6,6 +6,7 @@ import type { GameState, NodeId, Survivor } from '../sim/types';
 import { NODE, NODES, EDGES } from '../sim/world';
 import { stockTotal, survivorPos, threatPos, zoneOf } from '../sim/core';
 import { fmtTime, MODE_LABEL } from '../sim/text';
+import { objectiveStatus } from '../sim/missions';
 import type { Stage } from './scene';
 import type { City } from './city';
 import { GROUND, makeDash } from './textures';
@@ -90,6 +91,7 @@ const NPC_LOOKS: Look[] = [
   { jacket: 0xb9c2c4, pants: 0x8f9aa0, hunched: true, hair: 0x6a6258 }, // the patient
   { jacket: 0x6b5540, hat: 0x3a2f28, pack: 0x4a3f33 }, // Sacha
   { jacket: 0xb5483a, hood: 0x8a3429, scale: 0.6 }, // his daughter
+  { jacket: 0x5d5a6e, pants: 0x34323c, hair: 0xb9b4ac, pack: 0x1c1f24 }, // Vogel and his tape recorder
 ];
 
 interface SurvivorView {
@@ -204,7 +206,7 @@ export class Actors {
     const group = new THREE.Group();
     group.add(body, ring, crate);
     const followers: THREE.Mesh[] = [];
-    for (let i = 0; i < 4; i++) {
+    for (let i = 0; i < this.npcGeos.length; i++) {
       const f = new THREE.Mesh(this.npcGeos[i], new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9 }));
       f.visible = false;
       this.root.add(f);
@@ -392,7 +394,7 @@ export class Actors {
       v.crate.rotation.y = v.heading;
 
       // escorted civilians trail behind
-      const flags = [sv.escort.ines, sv.escort.patient, sv.escort.sacha, sv.escort.sacha];
+      const flags = [sv.escort.ines, sv.escort.patient, sv.escort.sacha, sv.escort.sacha, sv.escort.vogel];
       let rank = 0;
       v.followers.forEach((f, i) => {
         f.visible = flags[i] && !inside && sv.linked;
@@ -470,6 +472,7 @@ export class Actors {
     this.infected.instanceMatrix.needsUpdate = true;
 
     // ---------------- node rings + tags
+    const goals = objectiveStatus(s).nodes;
     NODES.forEach((node, i) => {
       const ring = this.rings[i];
       const isTarget = ui.targets.includes(node.id);
@@ -488,12 +491,12 @@ export class Actors {
       const stale = it.threat > 0 && !live.has(node.id) && it.seenAt !== -1;
       const occ = occupied[node.id];
       const signalSite = node.id === 'apts' && s.flags.unknownState === 'answered';
-      const objective = node.id === 'hosp_in' && s.delivered.medicine < 2 && (s.loot.hosp_in?.medicine ?? 0) > 0;
+      const objective = goals.includes(node.id);
       const loot = it.lootKnown && s.loot[node.id] && stockTotal(s.loot[node.id]) > 0;
       let html = '';
       if (isTarget || chosen) html += `<b>${node.name}</b>`;
       if (occ) html += `<span class="in">⌂ ${occ.join(', ')}</span>`;
-      if (objective && !isTarget && !occ) html += `<span class="obj">✚ Saint-Roch</span>`;
+      if (objective && !isTarget && !occ) html += `<span class="obj">◆ ${node.name}</span>`;
       if (signalSite) html += `<span class="obj">◉ Signal inconnu</span>`;
       if (loot && (isTarget || chosen)) html += `<span class="loot">▣ butin repéré</span>`;
       if (stale) html += `<span class="threat">☣ ${it.threat} · ${it.seenAt < 0 ? 'hier' : 'il y a ' + fmtTime(s.time - it.seenAt)}</span>`;

@@ -121,3 +121,82 @@ describe('simulation (headless, no renderer)', () => {
     expect(Object.keys(ratings).length).toBeGreaterThan(1);
   });
 });
+
+import { LAST_DAY, objectiveStatus } from '../src/sim/missions';
+
+/** Plays the whole arc with a simple day-aware operator who retries orders. */
+function playCampaign(seed: number, policy: Record<string, string> = {}) {
+  const s = newGame(seed);
+  const ev: SimEvent[] = [];
+  let guard = 0;
+  while (s.phase !== 'ending' && s.phase !== 'gameover' && guard++ < 20) {
+    const sent = new Map<string, number>();
+    const order = (key: string, id: string, type: Parameters<typeof issueOrder>[2], target: string | null) => {
+      const sv = s.survivors.find((v) => v.id === id)!;
+      if (!sv.alive || sv.mode === 'down' || sv.order || sv.to || sv.at !== 'shelter' || sv.health < 30) return;
+      if (s.time - (sent.get(key) ?? -999) < 60) return;
+      sent.set(key, s.time);
+      issueOrder(s, id, type, target, ev);
+    };
+    let ticks = 0;
+    while (s.phase === 'running' && ticks++ < 6000) {
+      if (s.awaiting !== null) {
+        const msg = s.radio.find((m) => m.id === s.awaiting)!;
+        const c = msg.choices!.find((x) => x.id === policy[msg.incident!]) ?? msg.choices![0];
+        resolveChoice(s, c.id, ev);
+        continue;
+      }
+      const left = s.duration - s.time;
+      const leaving = s.flags.final === 'leave';
+      if (left > 200 || leaving) {
+        if (s.day === 1 && s.delivered.medicine < 2) order('a', 'mara', 'retrieve', 'hosp_in');
+        if (s.day === 2 && s.delivered.parts < 2) order('a', 'jo', 'retrieve', 'garage');
+        if (s.day === 3) {
+          if (!s.flags.scouted_quay_n) order('a', 'lena', 'scout', 'quay_n');
+          if (!s.flags.scouted_east_n) order('b', 'mara', 'scout', 'east_n');
+          if (s.flags.vogelLocated && s.incidents.vogel.state === 'pending') order('c', 'jo', 'rescue', 'lock_e');
+        }
+        if (s.day === 4 && s.delivered.supplies < 3) {
+          order('a', 'jo', 'retrieve', 'apts');
+          order('b', 'mara', 'retrieve', 'quay_s');
+        }
+        if (s.day === 5 && leaving) for (const id of ['mara', 'jo', 'lena']) order(id, id, 'scout', 'lock_e');
+        if (s.day === 5 && !leaving && s.delivered.parts < 2) order('a', 'jo', 'retrieve', 'garage');
+      }
+      if (s.time > 200 && left < 150 && canEndDay(s) && !leaving) endDay(s, ev);
+      step(s, TICK, ev);
+    }
+    if (s.phase === 'debrief') nextDay(s, ev);
+  }
+  return s;
+}
+
+describe('five-day arc', () => {
+  it('reaches an epilogue shaped by earlier choices', () => {
+    let endings = 0;
+    const seen = new Set<string>();
+    for (let seed = 1; seed <= 12; seed++) {
+      const policy = { logbook: ['truth', 'lied', 'hidden'][seed % 3], vogel: ['bring', 'leave', 'take'][seed % 3], boat: seed % 2 ? 'open' : 'quiet', briefing: seed % 2 ? 'leave' : 'stay', bridge: 'stealth', hospital: 'ines', unknown: 'ignore' };
+      const s = playCampaign(seed * 104729, policy);
+      expect(['ending', 'gameover']).toContain(s.phase);
+      if (s.phase === 'ending') {
+        endings++;
+        expect(s.day).toBe(LAST_DAY);
+        expect(s.ending!.length).toBeGreaterThan(1);
+        seen.add(s.ending!.join('|'));
+      }
+    }
+    expect(endings).toBeGreaterThan(6);
+    expect(seen.size).toBeGreaterThan(3);
+  });
+
+  it('gives each day its own objective', () => {
+    const s = newGame(9);
+    const labels = new Set<string>();
+    for (let d = 1; d <= LAST_DAY; d++) {
+      s.day = d;
+      labels.add(objectiveStatus(s).label.replace(/\d/g, ''));
+    }
+    expect(labels.size).toBeGreaterThanOrEqual(4);
+  });
+});

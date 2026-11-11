@@ -94,7 +94,7 @@ class Game implements GameApi {
     this.started = true;
     this.paused = false;
     audio.unlock();
-    this.ui.open(this.s.phase === 'debrief' ? 'debrief' : this.s.awaiting !== null ? 'radio' : null);
+    this.ui.open(this.s.phase === 'debrief' ? 'debrief' : this.s.phase === 'ending' ? 'ending' : this.s.awaiting !== null ? 'radio' : null);
     this.stage.focus(-36, 12, window.innerWidth < window.innerHeight ? 56 : 30);
   }
 
@@ -237,6 +237,7 @@ class Game implements GameApi {
       } else if (e.type === 'phase') {
         this.save();
         if (this.s.phase === 'debrief') this.ui.open('debrief');
+        else if (this.s.phase === 'ending') this.ui.open('ending');
         else if (this.s.phase === 'running') {
           this.ui.open(this.s.awaiting !== null ? 'radio' : null);
           this.stage.focus(-36, 12);
@@ -305,6 +306,7 @@ class Game implements GameApi {
     this.stage.update(dt);
     this.stage.setAtmosphere(dark, storm, this.t);
     this.city.setShelter(s.shelter);
+    this.city.setBusFire(!!s.flags['blk_bridge_mid|bridge_w']);
     this.city.update(this.t, dark, storm);
     this.actors.sync(s, this.uiView, dt, this.t);
     this.stage.render();

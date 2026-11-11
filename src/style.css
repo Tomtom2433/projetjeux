@@ -98,7 +98,7 @@ button { font: inherit; color: inherit; background: none; border: 0; cursor: poi
 .toast { padding: 6px 12px; border-radius: 8px; background: rgba(11, 14, 20, 0.92); border: 1px solid var(--line); border-left: 3px solid var(--c); font-size: 12px; animation: toast 3.2s ease forwards; white-space: nowrap; }
 .toast.bad { border-color: var(--danger); border-left-color: var(--c); color: #ffd2cb; }
 .toast.wait { border-color: var(--warn); border-left-color: var(--c); color: #f7dcae; }
-@keyframes toast { 0% { opacity: 0; transform: translateY(-6px); } 8%, 82% { opacity: 1; transform: none; } 100% { opacity: 0; } }
+@keyframes toast { 0%, 85% { opacity: 1; } 100% { opacity: 0; } }
 #edges { position: absolute; inset: 0; pointer-events: none !important; }
 .edge { position: absolute; left: 0; top: 0; width: 30px; height: 30px; border-radius: 50%; background: rgba(11, 14, 20, 0.88); border: 2px solid var(--c); pointer-events: auto; display: flex; align-items: center; justify-content: center; }
 .edge b { font-size: 12px; }
@@ -215,6 +215,8 @@ h4.sec { margin: 14px 0 6px; font-size: 9.5px; letter-spacing: 0.16em; text-tran
 .cols .none { color: var(--dim); font-size: 12px; }
 .actions { display: flex; gap: 8px; justify-content: flex-end; padding: 10px 12px; border-top: 1px solid var(--line); flex-wrap: wrap; }
 
+.ending p { font-size: 13.5px; line-height: 1.55; margin: 0 0 9px; opacity: 0; animation: fadein 1.2s ease forwards; }
+@keyframes fadein { to { opacity: 1; } }
 /* title */
 .title { text-align: center; padding: 18px 20px 14px; }
 .title h1 { margin: 0; font-size: clamp(30px, 7vw, 54px); letter-spacing: 0.22em; font-weight: 800; }

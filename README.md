@@ -33,11 +33,18 @@ Glisser pour déplacer la caméra, pincer ou molette pour zoomer, mini-carte pou
 - **Brouillard de guerre et renseignement périmé** : la carte montre le dernier rapport, avec son âge.
   Hors réseau, un survivant devient un fantôme à sa dernière position connue ; les ordres attendent le retour du
   signal, les rapports arrivent en différé, et les incidents sont tranchés sans vous.
-- **3 incidents à embranchements** : le pont, l'hôpital, le signal inconnu. Le choix pose la situation,
-  la simulation décide du résultat, le dialogue le raconte.
+- **Un arc en 5 jours** (`src/sim/missions.ts`), une mission par jour :
+  1. *Saint-Roch* — rapporter des médicaments (incidents : le pont, l'hôpital, le signal inconnu).
+  2. *Le carnet de Lorentz* — des pièces au garage, et ce qu'on y apprend sur le frère de Jo.
+  3. *La voix dans la boucle* — deux relevés pour trianguler l'émetteur, puis l'homme de l'écluse.
+  4. *Avant l'orage* — pont coupé, orage toute la journée, et un message du relais fluvial.
+  5. *Dernier signal* — partir par le bateau ou rester à l'antenne. Épilogue selon tout ce qui a précédé.
+- **Script vivant** : répliques par personnage, ton selon la confiance, rappels de mémoire
+  (« J'avais dit non pour le checkpoint. Vous insistez. »), échanges entre survivants qui font bouger leurs relations.
 - **Abri** : antenne, infirmerie, générateur, réserve (2 niveaux chacun, visibles dans la cour).
-- **Débrief** : pertes, secourus, butin, conséquences, signaux non résolus. Les issues persistent au jour suivant.
+- **Débrief** : pertes, secourus, butin, conséquences, signaux non résolus.
 - **Sauvegarde locale** automatique (`localStorage`), simulation déterministe par graine.
+- **Voix parlées** en option (Réglages) : synthèse vocale du navigateur, hors-ligne, qualité variable.
 
 ## Architecture
 
@@ -45,7 +52,7 @@ Glisser pour déplacer la caméra, pincer ou molette pour zoomer, mini-carte pou
 src/sim/      état JSON pur, pas à pas fixe (0,25 s), RNG dans la sauvegarde
 src/render/   three.js : ville procédurale fusionnée par matériau, acteurs, caméra orthographique
 src/ui/       HUD et écrans en DOM
-tests/        vitest : journée complète, déterminisme, sauvegarde, perte de signal, persistance
+tests/        vitest : journée complète, déterminisme, sauvegarde, perte de signal, arc de 5 jours
 ```
 
 ## Performance
@@ -62,6 +69,7 @@ appareil réel.
   du brief demande les packs listés et un moteur natif ; cette tranche valide la boucle de jeu, la caméra,
   la lisibilité et le budget mobile.
 - Le comparatif Unity URP / Unreal n'a pas été fait ici. `src/sim` ne dépend d'aucun moteur et se porte tel quel.
-- Une seule mission, rejouée chaque jour avec les conséquences des jours précédents.
+- Une seule carte : les 5 missions se jouent sur le même îlot. Pas d'intérieurs à plusieurs pièces.
+- L'équilibrage vient d'opérateurs scriptés, pas de vrais joueurs.
 
 L'ancien prototype « DJ Block World » est conservé dans `legacy/dj-block-world/`.

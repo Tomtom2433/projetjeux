@@ -257,7 +257,7 @@ export function findPath(s: GameState, from: NodeId, to: NodeId, opts: PathOpts 
     open.delete(cur);
     done.add(cur);
     for (const nb of neighbors(cur)) {
-      if (done.has(nb)) continue;
+      if (done.has(nb) || s.flags['blk_' + [cur, nb].sort().join('|')]) continue;
       let cost = edgeLength(cur, nb) * (1 + edgeExposure(cur, nb) * safe * 0.4);
       const believed = opts.sv ? believedThreat(s, opts.sv, nb) : s.intel[nb].seenAt !== -1 ? s.intel[nb].threat : 0;
       cost += believed * safe * 22;

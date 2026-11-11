@@ -112,6 +112,7 @@ export interface City {
   interiors: Record<string, THREE.Mesh>;
   update(t: number, dark: number, storm: number): void;
   setShelter(sh: Shelter): void;
+  setBusFire(on: boolean): void;
   flare(x: number, z: number): void;
 }
 
@@ -575,6 +576,8 @@ export function buildCity(q: Quality): City {
   }
 
   const flareLight = glow(34, 9, 34, 0xff5a3a, 0, 'steady', 0, 60);
+  // the bus burns on the days the bridge is cut
+  const busFire = [glow(4.2, 0.2, -0.3, 0xff6a1a, 0, 'flicker', 1, 17), glow(4.2, 3.4, -0.3, 0xffb040, 0, 'flicker', 4, 7, true), glow(2.4, 3.1, 2.4, 0xff8a2a, 0, 'flicker', 7, 5, true)];
   let flareT = -1;
 
   // ============================================================ helpers
@@ -837,6 +840,9 @@ export function buildCity(q: Quality): City {
       shelterKey = key;
       for (const k of Object.keys(up) as (keyof Shelter)[]) up[k].forEach((g, i) => (g.visible = sh[k] > i));
       floods.forEach((f, i) => (f.base = sh.generator >= 1 && i < 4 ? 0.55 : sh.generator >= 2 && i >= 4 ? 0.5 : 0));
+    },
+    setBusFire(on) {
+      busFire.forEach((g, i) => (g.base = on ? (i === 0 ? 1.3 : 1) : 0));
     },
     flare(x, z) {
       flareLight.mesh.position.set(x, 0.2, z);

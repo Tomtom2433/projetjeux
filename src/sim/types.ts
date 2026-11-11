@@ -94,7 +94,7 @@ export interface Survivor {
   work: number;
   think: number;
   carrying: Stock;
-  escort: { ines: boolean; patient: boolean; sacha: boolean };
+  escort: { ines: boolean; patient: boolean; sacha: boolean; vogel: boolean };
   tactic: 'stealth' | 'detour' | null;
   helping: string | null;
   carriedBy: string | null;
@@ -176,7 +176,7 @@ export interface GameState {
   day: number;
   time: number;
   duration: number;
-  phase: 'briefing' | 'running' | 'debrief' | 'gameover';
+  phase: 'briefing' | 'running' | 'debrief' | 'ending' | 'gameover';
   survivors: Survivor[];
   threats: Threat[];
   nextThreatId: number;
@@ -200,6 +200,8 @@ export interface GameState {
   rescuedToday: string[];
   unresolved: string[];
   debrief: Debrief | null;
+  /** Epilogue lines, set once the last day is over. */
+  ending: string[] | null;
 }
 
 export type SimEvent =

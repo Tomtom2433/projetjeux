@@ -2,8 +2,9 @@
 import type { GameState, Shelter, SimEvent, Stock, Survivor } from './types';
 import { NODE, NODES } from './world';
 import { emptyStock, pushRadio, rnd } from './core';
+import { mission } from './missions';
 
-export const SAVE_VERSION = 3;
+export const SAVE_VERSION = 4;
 export const MISSION_DURATION = 600;
 
 function makeSurvivor(p: Partial<Survivor> & Pick<Survivor, 'id' | 'name' | 'short' | 'role' | 'color'>): Survivor {
@@ -35,7 +36,7 @@ function makeSurvivor(p: Partial<Survivor> & Pick<Survivor, 'id' | 'name' | 'sho
     work: 0,
     think: 0,
     carrying: emptyStock(),
-    escort: { ines: false, patient: false, sacha: false },
+    escort: { ines: false, patient: false, sacha: false, vogel: false },
     tactic: null,
     helping: null,
     carriedBy: null,
@@ -128,6 +129,7 @@ export function newGame(seed = (Date.now() & 0x7fffffff) || 1): GameState {
     rescuedToday: [],
     unresolved: [],
     debrief: null,
+    ending: null,
   };
   setupDay(s, []);
   return s;
@@ -145,8 +147,10 @@ export function setupDay(s: GameState, ev: SimEvent[]) {
   s.radio = [];
   s.awaiting = null;
   s.dayStart = { resources: { supplies: s.resources.supplies, medicine: s.resources.medicine, parts: s.resources.parts } };
-  s.storm = { start: 310 + Math.floor(rnd(s) * 40), end: 0 };
-  s.storm.end = s.storm.start + 100;
+  const m = mission(s);
+  s.storm = m.storm ? { start: m.storm[0], end: m.storm[1] } : { start: 310 + Math.floor(rnd(s) * 40), end: 0 };
+  if (!m.storm) s.storm.end = s.storm.start + 100;
+  for (const [a, b] of m.blocked ?? []) s.flags['blk_' + [a, b].sort().join('|')] = true;
 
   for (const sv of s.survivors) {
     if (!sv.alive) continue;
@@ -160,7 +164,7 @@ export function setupDay(s: GameState, ev: SimEvent[]) {
       pendingOrder: null,
       work: 0,
       carrying: emptyStock(),
-      escort: { ines: false, patient: false, sacha: false },
+      escort: { ines: false, patient: false, sacha: false, vogel: false },
       tactic: null,
       helping: null,
       carriedBy: null,
@@ -179,42 +183,28 @@ export function setupDay(s: GameState, ev: SimEvent[]) {
   // Yesterday's rumour: stale on purpose (the real pack is larger).
   s.intel.bridge_e = { seenAt: -900, threat: 3, lootKnown: false };
 
-  const harder = s.day > 1 ? 1 : 0;
-  s.loot = {
-    quay_s: { supplies: 2, medicine: 0, parts: 0 },
-    apts: { supplies: 3, medicine: 0, parts: 0 },
-    hosp_in: { supplies: 0, medicine: s.day === 1 ? 5 : 3, parts: 0 },
-    garage: { supplies: 1, medicine: 0, parts: 3 },
-  };
+  s.loot = {};
+  for (const [node, k] of Object.entries(m.loot)) s.loot[node] = { supplies: 0, medicine: 0, parts: 0, ...k };
 
   s.threats = [];
-  const add = (at: string, size: number, state: 'dormant' | 'wander') =>
+  for (const [at, size, state] of m.threats)
     s.threats.push({ id: s.nextThreatId++, at, to: null, progress: 0, size, state, target: null, goal: null, timer: 10 + rnd(s) * 20, seen: false });
-  add('bridge_e', 4 + (s.persistent.flareUsed ? 1 : 0), 'dormant');
-  add('parvis', 2 + harder, 'wander');
-  add('east_s', 3, 'dormant');
-  add('quay_n', 1, 'wander');
 
-  s.incidents = {
-    bridge: { state: 'pending' },
-    hospital: { state: s.day === 1 || s.persistent.inesLeft ? 'pending' : 'resolved' },
-    unknown: { state: 'pending' },
-  };
+  s.incidents = {};
+  for (const id of ['bridge', 'hospital', 'unknown', 'logbook', 'vogel', 'boat']) s.incidents[id] = { state: m.incidents.includes(id) ? 'pending' : 'resolved' };
+  if (s.day > 1 && s.persistent.inesLeft) s.incidents.hospital = { state: 'pending' };
   s.flags.unknownTruth = rnd(s) < 0.6 ? 'genuine' : 'lure';
   s.flags.unknownState = 'none';
 
   const leader = s.survivors.find((v) => v.alive);
-  const text =
-    s.day === 1
-      ? "ECHO-7, ici Mara. On n'a plus d'antibiotiques. Il en reste à l'hôpital Saint-Roch, de l'autre côté du canal. Le pont est le chemin le plus court, mais personne n'a vu le checkpoint depuis hier. Vous êtes nos yeux, opérateur. La nuit tombe dans dix minutes."
-      : `Jour ${s.day}. L'infirmerie a encore besoin de médicaments. Saint-Roch n'est pas vide, et la ville non plus. Dix minutes avant la nuit, opérateur.`;
+  const text = m.brief;
   const msg = pushRadio(s, ev, {
     from: leader?.id ?? 'echo',
     fromName: leader?.short ?? 'ECHO-7',
     text,
     kind: 'incident',
     incident: 'briefing',
-    choices: [{ id: 'ok', label: 'Reçu. On y va.', hint: 'Objectif : rapporter au moins 2 doses de médicaments avant la nuit.' }],
+    choices: m.choices ?? [{ id: 'ok', label: 'Reçu. On y va.', hint: m.hint }],
   });
   s.awaiting = msg.id;
 }

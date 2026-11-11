@@ -30,11 +30,12 @@ import { onArrive, tickIncidents } from './incidents';
 import { line, lootText, nodeName, recall } from './text';
 import { cryOut, protest, thank, tickBanter, welcome } from './banter';
 import { setupDay, storageCap } from './state';
+import { LAST_DAY, buildEnding, mission, objective, objectiveStatus, type ObjectiveStatus } from './missions';
 
 export const TICK = 0.25;
 
 const armed = (sv: Survivor) => sv.melee || sv.ammo > 0;
-const escorting = (sv: Survivor) => sv.escort.ines || sv.escort.patient || sv.escort.sacha;
+const escorting = (sv: Survivor) => sv.escort.ines || sv.escort.patient || sv.escort.sacha || sv.escort.vogel;
 
 function setMode(s: GameState, sv: Survivor, mode: Mode) {
   if (sv.mode === mode) return;
@@ -56,6 +57,7 @@ export function validTargets(s: GameState, sv: Survivor, type: OrderType): NodeI
   for (const o of s.survivors) if (o.alive && o.mode === 'down' && o.id !== sv.id) out.add(o.lastReport.node);
   if (s.flags.unknownState === 'answered') out.add('apts');
   if (s.incidents.hospital.state === 'pending' || s.persistent.inesLeft) out.add('hosp_in');
+  if (s.flags.vogelLocated && s.incidents.vogel.state === 'pending') out.add('lock_e');
   return [...out];
 }
 
@@ -66,6 +68,8 @@ export function obeyScore(s: GameState, sv: Survivor, order: Order): number {
   const path = findPath(s, zoneOf(sv), goal, { safe: 1.5, sv, avoidBridge: sv.tactic === 'detour' });
   let risk = 0;
   if (path) for (const n of path.slice(1, 4)) risk = Math.max(risk, believedThreat(s, sv, n) / 5);
+  // Being sent *to* a known pack weighs on the mind even from far away.
+  if (path && path.length > 4) risk = Math.max(risk, (believedThreat(s, sv, path[path.length - 1]) / 5) * 0.7);
   risk = clamp01(risk);
   if (order.stage === 'return') risk *= 0.5;
   const far = path && path.length > 4 ? darkness(s) * 0.12 : 0;
@@ -131,7 +135,7 @@ function speedOf(s: GameState, sv: Survivor): number {
   let v = 1.55 * sv.speed * (1 - sv.fatigue / 260);
   if (stockTotal(sv.carrying) > 0) v *= 0.92;
   if (sv.escort.patient) v *= 0.55;
-  else if (sv.escort.ines || sv.escort.sacha) v *= 0.85;
+  else if (sv.escort.ines || sv.escort.sacha || sv.escort.vogel) v *= 0.85;
   if (sv.helping && survivor(s, sv.helping)?.carriedBy === sv.id) v *= 0.6;
   if (sv.mode === 'flee') v *= 1.35;
   if (sv.health < 40 && sv.mode !== 'flee') v *= 0.8;
@@ -205,12 +209,19 @@ function arriveHome(s: GameState, sv: Survivor, ev: SimEvent[]) {
     people.push('le patient de Saint-Roch');
     s.persistent.patientRescued = true;
   }
-  if (sv.escort.sacha) people.push('Sacha et sa fille');
+  if (sv.escort.sacha) {
+    people.push('Sacha et sa fille');
+    s.persistent.sachaRescued = true;
+  }
+  if (sv.escort.vogel) {
+    people.push('Elias Vogel');
+    s.persistent.vogel = 'rescued';
+  }
   for (const p of people) {
     s.rescued.push(p);
     s.rescuedToday.push(p);
   }
-  sv.escort = { ines: false, patient: false, sacha: false };
+  sv.escort = { ines: false, patient: false, sacha: false, vogel: false };
   if (sv.helping) {
     const ally = survivor(s, sv.helping);
     if (ally && ally.carriedBy === sv.id) {
@@ -274,6 +285,7 @@ function runOrder(s: GameState, sv: Survivor, dt: number, ev: SimEvent[]) {
   if (sv.work > 0) return;
   if (o.type === 'scout') {
     perceive(s, sv, true);
+    s.flags['scouted_' + target] = true;
     const n = Math.round(believedThreat(s, sv, target));
     const around = neighbors(target).reduce((a, m) => a + (NODE[m].kind !== 'interior' ? Math.round(believedThreat(s, sv, m)) : 0), 0);
     say(s, ev, sv, line(s, sv, n + around > 0 ? 'scout_threat' : 'scout_clear', { ...vars, n: n + around }));
@@ -374,7 +386,11 @@ function goDown(s: GameState, sv: Survivor, ev: SimEvent[]) {
     s.persistent.inesLost = true;
   }
   if (sv.escort.sacha) s.unresolved.push('Sacha et sa fille ont fui dans les ruelles.');
-  sv.escort = { ines: false, patient: false, sacha: false };
+  if (sv.escort.vogel) {
+    s.persistent.vogel = 'lost';
+    s.unresolved.push('Elias Vogel est tombé avec son escorte. Son magnétophone tourne encore, quelque part.');
+  }
+  sv.escort = { ines: false, patient: false, sacha: false, vogel: false };
   systemMsg(s, ev, `${sv.short} ne répond plus. Balise de détresse active : ${nodeName(sv.at)}.`, 'alert');
 }
 
@@ -403,6 +419,7 @@ function encounter(s: GameState, sv: Survivor, prox: Proximity, ev: SimEvent[]) 
       if (th.state === 'dormant') p *= 0.6;
       if (!sv.to && (sv.mode === 'hide' || (sv.mode === 'order' && sv.order?.type === 'hold'))) p *= 0.3;
       if (sv.tactic === 'stealth' && node.kind === 'bridge') p *= 0.3;
+      if (sv.mode === 'order' && sv.order?.type === 'scout') p *= 0.6;
       if (sv.escort.patient) p *= 1.3;
       if (stockTotal(sv.carrying) > 0) p *= 1.1;
       p *= 1 - darkness(s) * 0.2;
@@ -495,7 +512,8 @@ function updateThreat(s: GameState, th: Threat, dt: number) {
     if (!th.to) {
       th.timer -= dt;
       if (th.timer <= 0) {
-        const opts = neighbors(th.at).filter((n) => n !== 'shelter' && NODE[n].kind !== 'interior' && !(n === 'gate' && s.shelter.generator >= 2));
+        const decoys = s.persistent.vogel === 'ally' || s.persistent.vogel === 'rescued';
+        const opts = neighbors(th.at).filter((n) => n !== 'shelter' && NODE[n].kind !== 'interior' && !(n === 'gate' && s.shelter.generator >= 2) && !(n === 'lock_e' && decoys));
         if (opts.length) goal = opts[Math.floor(rnd(s) * opts.length)];
         th.timer = 18 + rnd(s) * 30;
       }
@@ -559,7 +577,7 @@ function decide(s: GameState, sv: Survivor, prox: Proximity, ev: SimEvent[]) {
         sv.order = null;
         shiftTrust(sv, -3);
         remember(s, sv, `A abandonné sa mission près de ${NODE[here].name}.`, -0.3, 'aborted', here);
-        say(s, ev, sv, line(s, sv, 'abort', { node: NODE[here].name }));
+        say(s, ev, sv, here === 'shelter' ? line(s, sv, 'home') : line(s, sv, 'abort', { node: NODE[here].name }));
         setMode(s, sv, atShelter ? 'idle' : 'hide');
         sv.safeFor = -9999; // stays put until told otherwise
       } else if (sv.safeFor >= 0) setMode(s, sv, atShelter ? 'idle' : 'home');
@@ -597,7 +615,7 @@ function decide(s: GameState, sv: Survivor, prox: Proximity, ev: SimEvent[]) {
     sc.help = 0.2 + ((sv.relations[ally.id] ?? 50) / 100) * 0.55 + courage * 0.25 - fear * 0.3;
   }
 
-  if (!atShelter) {
+  if (!atShelter && s.flags.final !== 'leave') {
     if (!sv.order) sc.home = sv.safeFor < 0 ? -1 : 0.3 + (timeLeft < 120 ? 0.4 : 0);
     else if (timeLeft < 80 && sv.order.type !== 'retreat' && sv.order.stage !== 'return') sc.home = 0.55 + (1 - sv.trust / 100) * 0.3 + fear * 0.2;
     if (sv.safeFor < 0 && timeLeft < 100) sc.home = 0.8;
@@ -800,22 +818,46 @@ export function step(s: GameState, dt: number, ev: SimEvent[]) {
 
   for (const th of [...s.threats]) updateThreat(s, th, dt);
 
+  if (s.flags.final === 'leave') {
+    const at = s.flags.boatAt as number;
+    if (!s.flags.boatWarned && s.time >= at - 110) {
+      s.flags.boatWarned = true;
+      systemMsg(s, ev, 'Le bateau est en vue de l’écluse. Départ dans moins de deux minutes.', 'alert');
+    }
+    if (s.time >= at) return endDay(s, ev);
+  }
   if (s.time >= s.duration) endDay(s, ev);
 }
 
 // ---------------------------------------------------------------- end of day
 
 export function canEndDay(s: GameState): boolean {
-  return s.phase === 'running' && s.survivors.every((v) => !v.alive || (!v.to && v.at === 'shelter'));
+  if (s.phase !== 'running') return false;
+  if (s.flags.final === 'leave') return s.survivors.some((v) => v.alive) && s.survivors.every((v) => !v.alive || (!v.to && v.at === 'lock_e'));
+  return s.survivors.every((v) => !v.alive || (!v.to && v.at === 'shelter'));
 }
 
 export function endDay(s: GameState, ev: SimEvent[]) {
   if (s.phase !== 'running') return;
   s.awaiting = null;
+  const obj = objectiveStatus(s);
+  const title = mission(s).title;
   const nightNotes: string[] = [];
+  const leaving = s.flags.final === 'leave';
   for (const sv of s.survivors) {
     if (!sv.alive) continue;
-    if (!sv.to && sv.at === 'shelter') continue;
+    if (leaving && zoneOf(sv) === 'lock_e' && (sv.mode !== 'down' || sv.carriedBy)) {
+      s.persistent['evac_' + sv.id] = true;
+      nightNotes.push(`${sv.short} est à bord.`);
+      for (const [flag, name] of [['ines', 'Inès Duval'], ['patient', 'le patient de Saint-Roch'], ['sacha', 'Sacha et sa fille'], ['vogel', 'Elias Vogel']] as const)
+        if (sv.escort[flag]) s.rescued.push(name);
+      continue;
+    }
+    if (!leaving && !sv.to && sv.at === 'shelter') continue;
+    if (leaving && !sv.to && sv.at === 'shelter') {
+      nightNotes.push(`${sv.short} a regardé partir le bateau depuis le toit d’ECHO-7.`);
+      continue;
+    }
     const d = hopsCached(zoneOf(sv), 'shelter');
     let p = 0.78 - d * 0.07 + sv.health / 400 - sv.fatigue / 500 + s.shelter.generator * 0.05;
     if (sv.mode === 'down') p -= 0.5;
@@ -832,7 +874,7 @@ export function endDay(s: GameState, ev: SimEvent[]) {
         s.resources[k] += Math.max(0, put);
         s.delivered[k] += Math.max(0, put);
       }
-      for (const [flag, name] of [['ines', 'Inès Duval'], ['patient', 'le patient de Saint-Roch'], ['sacha', 'Sacha et sa fille']] as const)
+      for (const [flag, name] of [['ines', 'Inès Duval'], ['patient', 'le patient de Saint-Roch'], ['sacha', 'Sacha et sa fille'], ['vogel', 'Elias Vogel']] as const)
         if (sv.escort[flag]) {
           s.rescued.push(name);
           s.rescuedToday.push(name);
@@ -840,10 +882,13 @@ export function endDay(s: GameState, ev: SimEvent[]) {
             s.persistent.inesRescued = true;
             s.persistent.inesLeft = false;
           }
+          if (flag === 'sacha') s.persistent.sachaRescued = true;
+          if (flag === 'vogel') s.persistent.vogel = 'rescued';
         }
     } else {
       sv.alive = false;
       sv.missing = true;
+      if (sv.escort.vogel) s.persistent.vogel = 'lost';
       s.flags['dead_' + sv.id] = 'dans la nuit';
       s.unresolved.push(`La balise de ${sv.short} a émis jusqu’à 3 h du matin, près de ${NODE[zoneOf(sv)].name}.`);
       for (const o of s.survivors)
@@ -855,20 +900,42 @@ export function endDay(s: GameState, ev: SimEvent[]) {
   }
   if (s.flags.unknownState === 'answered') s.unresolved.push('Tanneurs : vous avez promis d’envoyer quelqu’un. Personne n’est venu.');
   if (s.flags.unknownState === 'proof' || s.incidents.unknown.state === 'active') s.unresolved.push('Immeuble des Tanneurs : un appel resté sans réponse.');
-  buildDebrief(s, nightNotes);
+  if (s.day >= LAST_DAY && s.flags.final === 'stay' && obj.done) s.persistent.finalDone = true;
+  buildDebrief(s, nightNotes, obj, title);
   s.phase = 'debrief';
   ev.push({ type: 'phase' });
 }
 
-function buildDebrief(s: GameState, notes: string[]) {
+function buildDebrief(s: GameState, notes: string[], obj: ObjectiveStatus, title: string) {
   const deaths = s.survivors.filter((v) => s.flags['dead_' + v.id]).map((v) => `${v.name} — ${v.missing ? 'porté·e disparu·e' : 'mort·e'} ${s.flags['dead_' + v.id]}`);
   const c: string[] = [...notes];
   const med = s.delivered.medicine;
-  if (med >= 2) c.push(`L’infirmerie tient : ${med} doses rapportées.`);
-  else {
-    c.push(med === 1 ? 'Une seule dose rapportée. Pas assez pour tout le monde.' : 'Aucun médicament rapporté. Les blessés vont s’affaiblir.');
-    s.persistent.noMedicine = true;
+  const o = objective(s);
+  if (s.day === 1) {
+    if (med >= 2) c.push(`L’infirmerie tient : ${med} doses rapportées.`);
+    else {
+      c.push(med === 1 ? 'Une seule dose rapportée. Pas assez pour tout le monde.' : 'Aucun médicament rapporté. Les blessés vont s’affaiblir.');
+      s.persistent.noMedicine = true;
+    }
+  } else if (o.kind === 'deliver') {
+    if (obj.done) c.push(o.res === 'parts' ? (s.day >= LAST_DAY ? 'L’amplificateur est réparé. ECHO-7 porte plus loin que jamais.' : 'Le générateur tourne rond. L’antenne tiendra.') : 'Il y a de quoi manger pour quelques jours.');
+    else c.push(o.res === 'parts' ? 'Pas assez de pièces. Le générateur tiendra à la ficelle.' : 'Pas assez de rations. La nuit sera longue, et la suivante aussi.');
+  } else if (o.kind === 'scout') {
+    c.push(obj.done ? 'Vous savez enfin qui parlait dans la boucle.' : 'L’émetteur n’a pas été trouvé. La boucle reprendra cette nuit.');
+  } else {
+    c.push(obj.done ? 'Tout le monde est à bord. ECHO-7 se tait.' : 'Le bateau est parti sans tout le monde.');
   }
+  const lb = s.incidents.logbook;
+  if (lb.choice === 'truth') c.push('Jo sait ce que Vogel a ordonné au convoi de son frère.');
+  if (lb.choice === 'lied') c.push('Jo croit que son frère est mort en couvrant les autres. C’est vous qui le lui avez dit.');
+  if (lb.choice === 'hidden') c.push('Le carnet du convoi a brûlé. Quelqu’un dans l’équipe sait pourquoi.');
+  const vg = s.incidents.vogel;
+  if (vg.choice === 'bring') c.push(s.persistent.vogel === 'rescued' ? 'Elias Vogel dort à ECHO-7, pour la première fois depuis des semaines.' : 'Vogel n’est pas arrivé jusqu’à l’abri.');
+  if (vg.choice === 'leave') c.push('Vogel reste à l’écluse. Ses leurres continuent d’éloigner les meutes du canal.');
+  if (vg.choice === 'take') c.push('Les leurres de l’écluse se sont tus. Le canal ne sera plus aussi calme.');
+  if (s.persistent.joKnows && vg.state === 'resolved' && s.day === 3) c.push('Vogel a parlé. Jo sait que vous lui avez menti.');
+  if (s.incidents.boat.choice === 'open') c.push('Toute la ville sait pour le bateau. Les vivants, et ce qui suit le bruit.');
+  if (s.incidents.boat.choice === 'quiet') c.push('Le bateau reste votre secret. Douze places.');
   if (s.flags.flareUsed) c.push('La fusée a vidé le checkpoint, et réveillé les entrepôts. Il n’en reste plus.');
   const h = s.incidents.hospital;
   if (h.state === 'resolved' && h.choice === 'all' && s.persistent.patientRescued) c.push('Tout le monde est sorti de Saint-Roch. Le patient vivra.');
@@ -884,12 +951,16 @@ function buildDebrief(s: GameState, notes: string[]) {
     else if (sv.trust > 80) c.push(`${sv.short} vous suivrait n’importe où (${Math.round(sv.trust)}).`);
   }
   const alive = s.survivors.filter((v) => v.alive).length;
-  const rating = alive === 0 ? 'echec' : med >= 2 && deaths.length === 0 ? 'succes' : med >= 2 || (deaths.length === 0 && med >= 1) ? 'mitige' : 'echec';
+  const partial = o.kind === 'deliver' ? s.delivered[o.res] >= 1 : o.kind === 'scout' ? !!s.flags.vogelLocated : s.survivors.some((v) => s.persistent['evac_' + v.id]);
+  const rating = alive === 0 ? 'echec' : obj.done && deaths.length === 0 ? 'succes' : obj.done || (deaths.length === 0 && partial) ? 'mitige' : 'echec';
+  void title;
   const headline =
     alive === 0
       ? 'ECHO-7 n’émet plus.'
       : rating === 'succes'
-        ? 'Tout le monde est rentré. Les médicaments aussi.'
+        ? s.flags.final === 'leave'
+          ? 'Tout le monde est à bord.'
+          : 'Tout le monde est rentré. Objectif atteint.'
         : rating === 'mitige'
           ? 'ECHO-7 tient encore. À quel prix.'
           : 'Une journée de plus, et moins de voix sur la fréquence.';
@@ -908,6 +979,12 @@ function buildDebrief(s: GameState, notes: string[]) {
 /** Night passes; persistent outcomes carry over into the next mission. */
 export function nextDay(s: GameState, ev: SimEvent[]) {
   const alive = s.survivors.filter((v) => v.alive);
+  if (s.day >= LAST_DAY) {
+    s.ending = buildEnding(s);
+    s.phase = 'ending';
+    ev.push({ type: 'phase' });
+    return;
+  }
   if (!alive.length) {
     s.phase = 'gameover';
     return;
