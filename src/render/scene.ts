@@ -174,7 +174,7 @@ export class Stage {
       w1 = Math.max(w1, w);
     }
     const aspect = window.innerWidth / window.innerHeight;
-    const needV = ((w1 - w0) * Math.sin(PITCH)) / 2 + pad * 1.5;
+    const needV = ((w1 - w0) * Math.sin(PITCH)) / 2 + pad * 2;
     const needH = ((u1 - u0) / 2 + pad * 2.2) / aspect;
     const uc = (u0 + u1) / 2 - pad * 0.5; // shift right: the team panel sits on the left
     const wc = (w0 + w1) / 2 + pad * 0.3;
@@ -197,8 +197,8 @@ export class Stage {
 
     // dynamic resolution: trade pixels for a stable frame rate
     this.frameAvg += (dt * 1000 - this.frameAvg) * 0.05;
-    if (this.frameAvg > 26 && this.dyn > 0.6) {
-      this.dyn = Math.max(0.6, this.dyn - 0.1);
+    if (this.frameAvg > 26 && this.dyn > 0.7) {
+      this.dyn = Math.max(0.7, this.dyn - 0.1);
       this.frameAvg = 18;
       this.renderer.setPixelRatio(this.q.pixelRatio * this.dyn);
     } else if (this.frameAvg < 13 && this.dyn < 1) {

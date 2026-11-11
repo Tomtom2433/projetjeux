@@ -493,11 +493,11 @@ export class Ui {
           const lvl = s.shelter[u.key];
           const next = u.levels[lvl];
           const block = upgradeBlocker(s, u.key);
-          const names = { supplies: 'rations', medicine: 'médic.', parts: 'pièces' } as const;
+          const names = { supplies: 'ration', medicine: 'médic.', parts: 'pièce' } as const;
           return `<div class="upc"><h3>${u.name}<span class="pips">${u.levels.map((_, i) => `<i class="${i < lvl ? 'on' : ''}"></i>`).join('')}</span></h3>
             <p>${lvl === 0 ? u.base : u.levels[lvl - 1].effect}</p>
             ${next ? `<p class="next">▸ Niv. ${lvl + 1} : ${next.effect}</p>` : ''}
-            <footer>${next ? `<span class="cost">${(Object.entries(next.cost) as [keyof typeof names, number][]).map(([k, v]) => `<span class="${s.resources[k] < v ? 'no' : ''}">${v} ${names[k]}</span>`).join('')}</span><button class="btn ${block ? '' : 'primary'}" data-act="buy" data-arg="${u.key}" ${block ? 'disabled' : ''}>${block && block !== 'Ressources insuffisantes' ? block : 'Améliorer'}</button>` : '<span class="cost">Niveau maximum</span>'}</footer></div>`;
+            <footer>${next ? `<span class="cost">${(Object.entries(next.cost) as [keyof typeof names, number][]).map(([k, v]) => `<span class="${s.resources[k] < v ? 'no' : ''}">${v} ${names[k]}${v > 1 && k !== 'medicine' ? 's' : ''}</span>`).join('')}</span><button class="btn ${block ? '' : 'primary'}" data-act="buy" data-arg="${u.key}" ${block ? 'disabled' : ''}>${block && block !== 'Ressources insuffisantes' ? block : 'Améliorer'}</button>` : '<span class="cost">Niveau maximum</span>'}</footer></div>`;
         }).join('')}</div></div></div>`;
     } else if (this.screen === 'debrief' && s.debrief) {
       const d = s.debrief;
