@@ -249,6 +249,7 @@ export class Ui {
       case 'continue': g.continueGame(); break;
       case 'tier': storeTier(arg as Tier | 'auto'); location.reload(); break;
       case 'sound': audio.setMuted(!audio.muted); this.render(); break;
+      case 'voice': audio.setVoice(!audio.voice); this.render(); if (audio.voice) audio.speak('ECHO-7, ici Mara. Vous me recevez ?', 'mara'); break;
       case 'perf': this.showPerf = !this.showPerf; this.el.perf.hidden = !this.showPerf; this.render(); break;
       case 'skip': this.typed = 1e9; break;
       case 'fullscreen': document.documentElement.requestFullscreen?.().catch(() => {}); break;
@@ -283,6 +284,7 @@ export class Ui {
     this.lastMsg = msg;
     if (msg.kind === 'alert') audio.alert();
     else audio.blip(msg.signal);
+    audio.speak(msg.text, msg.from, msg.signal, msg.kind !== 'report');
     if (msg.choices && !msg.chosen) this.open('radio');
     else if (this.screen === 'radio') this.render();
   }
@@ -658,6 +660,7 @@ export class Ui {
       html = `<div class="sheet">${head('Réglages')}<div class="body"><div class="settings">
         <div class="row"><label>Qualité graphique<small>Recharge la page. La partie est sauvegardée.</small></label><div class="seg">${(['auto', 'low', 'medium', 'high'] as const).map((t) => `<button class="${tier === t ? 'on' : ''}" data-act="tier" data-arg="${t}">${{ auto: 'Auto', low: 'Léger', medium: 'Moyen', high: 'Élevé' }[t]}</button>`).join('')}</div></div>
         <div class="row"><label>Son radio</label><button class="btn" data-act="sound">${audio.muted ? 'Coupé' : 'Activé'}</button></div>
+        <div class="row"><label>Voix parlées<small>${audio.voiceAvailable ? 'Synthèse vocale du navigateur : hors-ligne, qualité variable selon l’appareil.' : 'Non disponible sur ce navigateur.'}</small></label><button class="btn" data-act="voice" ${audio.voiceAvailable ? '' : 'disabled'}>${audio.voice ? 'Activées' : 'Désactivées'}</button></div>
         <div class="row"><label>Profilage<small>FPS, draw calls, triangles, résolution dynamique.</small></label><button class="btn" data-act="perf">${this.showPerf ? 'Affiché' : 'Masqué'}</button></div>
         <div class="row"><label>Plein écran</label><button class="btn" data-act="fullscreen">Activer</button></div>
         <div class="row"><label>Journée en cours<small>Ceux qui sont dehors passeront la nuit dehors.</small></label><button class="btn" data-act="endday">Terminer la journée</button><button class="btn ghost" data-act="new">Nouvelle partie</button></div>

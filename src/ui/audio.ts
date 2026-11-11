@@ -2,9 +2,12 @@
 class RadioAudio {
   private ctx: AudioContext | null = null;
   muted = false;
+  /** Spoken radio lines through the browser's own speech synthesis (offline, quality varies by device). */
+  voice = false;
 
   constructor() {
     try {
+      this.voice = localStorage.getItem('last-signal.voice') === '1';
       this.muted = localStorage.getItem('last-signal.muted') === '1';
     } catch {
       /* ignore */
@@ -31,6 +34,38 @@ class RadioAudio {
     } catch {
       /* ignore */
     }
+  }
+
+  get voiceAvailable() {
+    return typeof speechSynthesis !== 'undefined' && typeof SpeechSynthesisUtterance !== 'undefined';
+  }
+
+  setVoice(on: boolean) {
+    this.voice = on;
+    if (!on && this.voiceAvailable) speechSynthesis.cancel();
+    try {
+      localStorage.setItem('last-signal.voice', on ? '1' : '0');
+    } catch {
+      /* ignore */
+    }
+  }
+
+  /** Each speaker gets a pitch and pace; a weak signal makes the delivery slower and quieter. */
+  speak(text: string, who: string, signal = 1, urgent = false) {
+    if (!this.voice || this.muted || !this.voiceAvailable) return;
+    const clean = text.replace(/kk?rr?sh+/gi, ' ').replace(/[…—]/g, ', ').replace(/·e/g, '').trim();
+    if (!clean) return;
+    const u = new SpeechSynthesisUtterance(clean);
+    const fr = speechSynthesis.getVoices().filter((v) => v.lang.toLowerCase().startsWith('fr'));
+    const profile: Record<string, [number, number, number]> = { mara: [1.05, 1.05, 0], jo: [0.55, 0.95, 1], lena: [1.55, 1.15, 0], unknown: [0.8, 0.82, 1], echo: [1, 1, 0] };
+    const [pitch, rate, pickVoice] = profile[who] ?? profile.echo;
+    if (fr.length) u.voice = fr[Math.min(fr.length - 1, pickVoice)];
+    u.lang = 'fr-FR';
+    u.pitch = pitch;
+    u.rate = rate * (0.85 + Math.min(1, signal) * 0.15);
+    u.volume = 0.55 + Math.min(1, signal) * 0.45;
+    if (urgent) speechSynthesis.cancel();
+    speechSynthesis.speak(u);
   }
 
   private tone(freq: number, dur: number, gain: number, when = 0, type: OscillatorType = 'sine') {
