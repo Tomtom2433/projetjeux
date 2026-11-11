@@ -10,6 +10,7 @@ import { objectiveStatus } from '../sim/missions';
 import type { Stage } from './scene';
 import type { City } from './city';
 import { GROUND, makeDash } from './textures';
+import { loadRig, type RiggedFigure } from './rigged';
 
 export interface UiView {
   selected: string | null;
@@ -136,6 +137,8 @@ interface SurvivorView {
   mat: THREE.MeshStandardMaterial;
   limbs: { legL: THREE.Mesh; legR: THREE.Mesh; armL: THREE.Mesh; armR: THREE.Mesh };
   size: number;
+  /** Realistic skinned model, once loaded; replaces the stylised parts. */
+  rig?: RiggedFigure;
   ring: THREE.Mesh;
   crate: THREE.Mesh;
   followers: THREE.Mesh[];
@@ -296,6 +299,13 @@ export class Actors {
     this.labels.appendChild(tag);
     const p = survivorPos(sv);
     this.views.set(sv.id, { group, body, mat, limbs, size, ring, crate, followers, tag, x: p.x, z: p.z, heading: 0, walk: 0, hit: 0, fall: 0, phase: this.views.size * 2.1 });
+    const view = this.views.get(sv.id)!;
+    void loadRig(sv.id, 2.3, shadows).then((rig) => {
+      if (!rig || this.views.get(sv.id) !== view) return;
+      for (const child of [...body.children]) child.visible = false;
+      body.add(rig.root);
+      view.rig = rig;
+    });
   }
 
   /** Where the operator believes the survivor is. */
@@ -492,11 +502,26 @@ export class Actors {
       L.armR.rotation.x += (aR - L.armR.rotation.x) * Math.min(1, dt * 14);
       L.armL.rotation.z = observing ? -0.5 : -0.08;
       L.armR.rotation.z = observing ? 0.5 : 0.08;
+      if (v.rig) {
+        v.rig.pose({
+          stride: moving ? Math.sin(v.walk) : 0,
+          gait: !moving ? 0 : sv.mode === 'flee' ? 1 : 0.5,
+          armL: -L.armL.rotation.x,
+          armR: -L.armR.rotation.x,
+          crouch: crouch || resting ? 1 : searching ? 0.45 : 0,
+          spread: observing ? 0.5 : 0,
+        });
+      }
       v.ring.visible = !carried;
       const mat = v.mat;
       mat.opacity = sv.linked ? 1 : 0.38;
       v.hit = Math.max(0, v.hit - dt * 2.5);
       mat.emissive.setRGB(v.hit * 0.9, 0, 0);
+      if (v.rig)
+        for (const rm of v.rig.materials) {
+          rm.opacity = mat.opacity;
+          rm.emissive.setRGB(v.hit * 0.6, 0, 0);
+        }
       const ringMat = v.ring.material as THREE.MeshBasicMaterial;
       ringMat.opacity = sv.linked ? 0.9 : 0.35 + Math.sin(t * 4) * 0.15;
       ringMat.color.set(fighting || (sv.mode === 'flee' && sv.linked) ? (Math.sin(t * 10) > 0 ? '#ff5a45' : sv.color) : sv.color);
