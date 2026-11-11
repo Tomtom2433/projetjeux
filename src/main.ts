@@ -107,10 +107,10 @@ class Game implements GameApi {
     this.ui.tutorial.maybeStart();
   }
 
-  newGame() {
+  /** `training`: force or skip the guided first day; by default only first-time players get it. */
+  newGame(training?: boolean) {
     clearSave();
-    // first-time players start with the guided training day
-    this.rebuild(newGame(undefined, !Tutorial.seen()));
+    this.rebuild(newGame(undefined, training ?? !Tutorial.seen()));
     // a first game opens on the three of them talking, before the operator ever speaks
     const intro = this.s.day === 0 ? introScene(this.s) : null;
     if (intro) {

@@ -35,7 +35,7 @@ export interface GameApi {
   skipTutorial(): void;
   endDayNow(): void;
   nextDay(): void;
-  newGame(): void;
+  newGame(training?: boolean): void;
   continueGame(): void;
   hasSave(): boolean;
   focus(x: number, z: number): void;
@@ -259,7 +259,7 @@ export class Ui {
       case 'speed': g.cycleSpeed(); break;
       case 'endday': g.endDayNow(); break;
       case 'nextday': g.nextDay(); break;
-      case 'new': g.newGame(); break;
+      case 'new': g.newGame(arg === 'tuto' ? true : arg === 'skip' ? false : undefined); break;
       case 'continue': g.continueGame(); break;
       case 'tier': storeTier(arg as Tier | 'auto'); location.reload(); break;
       case 'sound': audio.setMuted(!audio.muted); this.render(); break;
@@ -634,7 +634,8 @@ export class Ui {
         <p>La ville est tombée. Vous êtes la voix d’ECHO-7 : vous ne voyez que ce que vos survivants vous rapportent, et ils ne vous obéissent que s’ils vous font confiance.</p>
         <div class="menu">
           ${this.g.hasSave() ? '<button class="btn primary" data-act="continue">Continuer</button>' : ''}
-          <button class="btn ${this.g.hasSave() ? '' : 'primary'}" data-act="new">Nouvelle partie</button>
+          <button class="btn ${this.g.hasSave() ? '' : 'primary'}" data-act="new" data-arg="tuto">Nouvelle partie</button>
+          ${Tutorial.seen() ? '<button class="btn ghost" data-act="new" data-arg="skip">Sans la formation</button>' : ''}
         </div>
         <div class="row" style="justify-content:center;margin-top:14px"><div class="seg">${(['auto', 'low', 'medium', 'high'] as const).map((t) => `<button class="${tier === t ? 'on' : ''}" data-act="tier" data-arg="${t}">${{ auto: 'Auto', low: 'Léger', medium: 'Moyen', high: 'Élevé' }[t]}</button>`).join('')}</div></div>
         <footer>Tranche verticale 0.2 · hors-ligne · sauvegarde locale automatique</footer>
