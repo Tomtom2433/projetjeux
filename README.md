@@ -47,6 +47,14 @@ Glisser pour déplacer la caméra, pincer ou molette pour zoomer, mini-carte pou
 - **Progression** (`src/sim/perks.ts`) : expérience par action, niveaux, et une compétence à choisir par niveau
   parmi quatre propres à chaque survivant.
 - **Tutoriel** guidé sur le premier jour, rejouable depuis les réglages.
+- **Illustrations** (`public/art`) : 8 portraits et 20 scènes peints, générés avec Magnific puis embarqués en
+  WebP (1,4 Mo au total, mis en cache pour le hors-ligne). Les incidents du pont et de l'hôpital ont une scène
+  par survivant ; les événements du directeur s'affichent en carte illustrée.
+- **Une couleur par ordre** : Reconnaître (cyan), Récupérer (ambre), Tenir (bleu-gris), Repli (violet),
+  Secourir (rose), reprise sur les boutons, les tracés, les anneaux et les statuts.
+- **Aptitudes** : chaque survivant est noté de 1 à 5 par type d'ordre (Lena en reconnaissance, Jo en
+  récupération, Mara en secours). L'aptitude joue sur la vitesse, la discrétion, l'acceptation de l'ordre, et
+  monte avec la pratique.
 - **Abri** : antenne, infirmerie, générateur, réserve (2 niveaux chacun, visibles dans la cour).
 - **Débrief** : pertes, secourus, butin, conséquences, signaux non résolus.
 - **Sauvegarde locale** automatique (`localStorage`), simulation déterministe par graine.

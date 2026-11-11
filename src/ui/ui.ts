@@ -5,8 +5,8 @@ import { LINK_THRESHOLD, pathLength, signalAt, stockTotal, stormLevel, survivorS
 import { canEndDay, validTargets } from '../sim/sim';
 import { UPGRADES, storageCap, upgradeBlocker } from '../sim/state';
 import { LAST_DAY, mission, objectiveStatus } from '../sim/missions';
-import { LEVELS, PERKS, levelProgress, perkOffer } from '../sim/perks';
-import { MODE_LABEL, NPCS, ORDER_LABEL, fmtClock, fmtTime, nodeName } from '../sim/text';
+import { LEVELS, PERKS, aptitude, levelProgress, perkOffer } from '../sim/perks';
+import { MODE_LABEL, NPCS, ORDER_COLOR, ORDER_LABEL, fmtClock, fmtTime, nodeName } from '../sim/text';
 import { storedTier, storeTier, type Tier } from '../render/quality';
 import { audio } from './audio';
 import { Tutorial } from './tutorial';
@@ -83,6 +83,8 @@ export interface Mood {
 const moodOf = (sv: Survivor): Mood => ({ hurt: sv.health < 55, afraid: sv.fear > 60 || sv.mode === 'flee', lost: sv.alive && !sv.linked, dead: !sv.alive });
 
 // (portraits)
+/** Characters with a painted portrait in public/art. */
+const PAINTED = new Set(['mara', 'jo', 'lena', 'ines', 'patient', 'sacha', 'vogel', 'stranger']);
 const SKIN: Record<string, string> = { mara: '#c48d69', jo: '#d6ab8b', lena: '#e8c6aa', ines: '#b98562', patient: '#d9c2ae', sacha: '#cfa07e', vogel: '#d2b7a0' };
 
 /** Hand-drawn SVG busts. The face reacts to the survivor's state. */
@@ -92,6 +94,10 @@ function portrait(id: string, color = '#3fe0c5', mood: Mood = {}): string {
     return `<svg viewBox="0 0 100 100"><rect width="100" height="100" fill="#14121f"/><g fill="#3b3560">${Array.from({ length: 40 }, (_, i) => `<rect x="${(i * 37) % 100}" y="${(i * 53) % 100}" width="${8 + ((i * 7) % 20)}" height="2"/>`).join('')}</g><path d="M22 100c0-18 12-28 28-28s28 10 28 28z" fill="#2a2546"/><ellipse cx="50" cy="44" rx="15" ry="18" fill="#2a2546"/><text x="50" y="54" font-size="26" font-weight="800" text-anchor="middle" fill="#a78bfa" font-family="system-ui">?</text>${scan}</svg>`;
   if (id === 'echo')
     return `<svg viewBox="0 0 100 100"><rect width="100" height="100" fill="#0f1a1c"/><g fill="none" stroke="#3fe0c5" stroke-width="4" stroke-linecap="round"><path d="M36 40a20 20 0 0 1 28 0"/><path d="M26 30a34 34 0 0 1 48 0" opacity=".5"/><path d="M50 50v32M40 82h20M50 50 40 82M50 50l10 32" stroke="#e9e4d8"/></g><circle cx="50" cy="48" r="5" fill="#a78bfa"/>${scan}</svg>`;
+  if (PAINTED.has(id)) {
+    const cls = mood.dead ? 'dead' : mood.lost ? 'lost' : mood.hurt ? 'hurt' : mood.afraid ? 'afraid' : '';
+    return `<div class="pimg ${cls}" style="background-image:url(./art/p-${id}.webp)"></div>`;
+  }
   const skin = SKIN[id] ?? '#d6ab8b';
   const back: Record<string, string> = {
     mara: '<path d="M65 28c9 4 11 17 6 29l-6-8z" fill="#2b1d16"/>',
@@ -280,9 +286,24 @@ export class Ui {
     if (msg.kind === 'alert') audio.alert();
     else audio.blip(msg.signal);
     audio.speak(msg.text, msg.from, msg.signal, msg.kind !== 'report');
+    if (msg.art && !msg.choices && this.screen === null && this.g.started) this.eventCard(msg);
     if (msg.choices && !msg.chosen) this.open('radio');
     else if (this.screen === 'radio') this.render();
   }
+
+  /** Illustrated card for events that need no decision. */
+  private eventCard(msg: RadioMessage) {
+    const el = document.getElementById('eventcard')!;
+    const c = this.g.s.survivors.find((v) => v.id === msg.from)?.color ?? 'var(--teal)';
+    el.innerHTML = `<div class="scene" style="background-image:url(./art/s-${msg.art}.webp)"></div><p><b style="color:${c}">${msg.fromName}</b> ${esc(msg.text)}</p>`;
+    el.hidden = false;
+    el.classList.remove('show');
+    void el.offsetWidth;
+    el.classList.add('show');
+    clearTimeout(this.cardTimer);
+    this.cardTimer = window.setTimeout(() => (el.hidden = true), 6500);
+  }
+  private cardTimer = 0;
 
   toast(text: string, kind: 'ok' | 'bad' | 'wait' = 'ok', color = 'var(--teal)') {
     const d = document.createElement('div');
@@ -399,7 +420,7 @@ export class Ui {
           const fcls = fl && fl.until > this.now ? fl.cls : '';
           return `<button class="chip ${fcls} ${g.selected === sv.id ? 'sel' : ''} ${sv.alive ? '' : 'dead'}" style="--c:${sv.color}" data-act="select" data-arg="${sv.id}">
             <span class="av">${portrait(sv.id, sv.color, moodOf(sv))}</span><b>${sv.short}${sv.perkPoints > 0 ? ' <u>★</u>' : ''}</b>${sv.alive ? bars(survivorSignal(s, sv)) : '<span></span>'}
-            <span class="st ${cls}">${st}</span>
+            <span class="st ${cls}" ${sv.alive && sv.linked && sv.mode === 'order' && sv.order ? `style="color:${ORDER_COLOR[sv.order.stage === 'return' ? 'retreat' : sv.order.type]}"` : ''}>${st}</span>
             <span class="meters"><span class="mw"><em>♥</em><span class="meter hp"><i style="width:${sv.health.toFixed(0)}%"></i></span></span><span class="mw"><em>ϟ</em><span class="meter fear"><i style="width:${sv.fear.toFixed(0)}%"></i></span></span><span class="mw"><em>☾</em><span class="meter fat"><i style="width:${sv.fatigue.toFixed(0)}%"></i></span></span></span>
           </button>`;
         })
@@ -418,18 +439,19 @@ export class Ui {
         const dead = g.route ? g.route.some((n) => signalAt(s, n) < LINK_THRESHOLD) : false;
         this.set(
           o,
-          `<div class="confirm"><p><b>${sel.short} → ${ORDER_LABEL[g.orderType]}</b> · ${nodeName(g.chosen)}<small>${len} m${risk ? ` · ☣ ${risk} signalés` : ''}${unknown ? ` · ${unknown} secteur${unknown > 1 ? 's' : ''} non reconnu${unknown > 1 ? 's' : ''}` : ''}${dead ? ' · zone sans signal' : ''}</small></p>
+          `<div class="confirm" style="--oc:${ORDER_COLOR[g.orderType]}"><p><b>${sel.short} → ${ORDER_LABEL[g.orderType]}</b> · ${nodeName(g.chosen)}<small>${len} m${risk ? ` · ☣ ${risk} signalés` : ''}${unknown ? ` · ${unknown} secteur${unknown > 1 ? 's' : ''} non reconnu${unknown > 1 ? 's' : ''}` : ''}${dead ? ' · zone sans signal' : ''}</small></p>
            <button class="btn primary" data-act="confirm">Transmettre</button><button class="btn ghost" data-act="cancel">Annuler</button></div>`,
         );
       } else if (g.orderType) {
-        this.set(o, `<div class="confirm"><p><b>${ORDER_LABEL[g.orderType]}</b><small>${g.targets.length ? 'Touchez une destination surlignée sur la carte.' : 'Aucune cible connue pour cet ordre.'}</small></p><button class="btn ghost" data-act="cancel">Annuler</button></div>`);
+        this.set(o, `<div class="confirm" style="--oc:${ORDER_COLOR[g.orderType]}"><p><b>${ORDER_LABEL[g.orderType]}</b><small>${g.targets.length ? 'Touchez une destination surlignée sur la carte.' : 'Aucune cible connue pour cet ordre.'}</small></p><button class="btn ghost" data-act="cancel">Annuler</button></div>`);
       } else {
         this.set(
           o,
           ORDERS.map((t) => {
             const dis = t === 'rescue' && validTargets(s, sel, 'rescue').length === 0;
             const on = sel.order?.type === t && sel.mode === 'order';
-            return `<button class="o ${on ? 'on' : ''}" data-act="order" data-arg="${t}" ${dis ? 'disabled' : ''}>${ICON[t]}${ORDER_LABEL[t]}</button>`;
+            const apt = t === 'retreat' ? 0 : aptitude(sel, t);
+            return `<button class="o ${on ? 'on' : ''}" style="--oc:${ORDER_COLOR[t]}" data-act="order" data-arg="${t}" ${dis ? 'disabled' : ''}>${ICON[t]}${ORDER_LABEL[t]}${apt ? `<span class="apt">${'<i class="on"></i>'.repeat(apt)}${'<i></i>'.repeat(5 - apt)}</span>` : '<span class="apt"></span>'}</button>`;
           }).join(''),
         );
       }
@@ -475,7 +497,7 @@ export class Ui {
       c.stroke();
     }
     if (this.g.route) {
-      c.strokeStyle = '#3fe0c5';
+      c.strokeStyle = ORDER_COLOR[this.g.orderType ?? 'scout'];
       c.lineWidth = 3;
       c.beginPath();
       this.g.route.forEach((n, i) => (i ? c.lineTo(X(NODE[n].x), Z(NODE[n].z)) : c.moveTo(X(NODE[n].x), Z(NODE[n].z))));
@@ -591,7 +613,7 @@ export class Ui {
 
     if (this.screen === 'title') {
       const tier = storedTier();
-      html = `<div class="sheet"><div class="title">
+      html = `<div class="sheet"><div class="scene hero" style="background-image:url(./art/s-shelter.webp)"></div><div class="title">
         <h1>LAST <span>SIGNAL</span></h1>
         <p>La ville est tombée. Vous êtes la voix d’ECHO-7 : vous ne voyez que ce que vos survivants vous rapportent, et ils ne vous obéissent que s’ils vous font confiance.</p>
         <div class="menu">
@@ -607,6 +629,7 @@ export class Ui {
       const sv = m ? s.survivors.find((v) => v.id === m.from) : undefined;
       const who = sv ? `<b>${sv.name}</b><small>${sv.role}</small>` : `<b>${m?.fromName ?? 'ECHO-7'}</b><small>${m?.from === 'unknown' ? 'Fréquence non identifiée' : 'Station radio'}</small>`;
       html = `<div class="sheet">${head(await_?.incident === 'briefing' ? `Jour ${s.day} · ${mission(s).title}` : 'Transmission · canal 7', `Jour ${s.day} · ${fmtClock(m?.time ?? s.time)}`, !await_)}<div class="body">
+        ${m?.art ? `<div class="scene" style="background-image:url(./art/s-${m.art}.webp)"></div>` : ''}
         ${m ? `<div class="radio"><div class="who"><div class="portrait">${portrait(sv ? sv.id : m.from === 'unknown' ? 'unknown' : 'echo', sv?.color, sv ? { ...moodOf(sv), lost: m.signal < 0.34 } : {})}</div><div>${who}<div class="sigrow">${bars(m.signal)} ${Math.round(m.signal * 100)} %${m.delayed ? ' · message différé' : ''}</div></div><canvas id="wave" width="300" height="68" data-sig="${m.signal}"></canvas></div>
         <div><p class="msg mono" id="rmsg" data-id="${m.id}" data-act="skip"></p>
         ${await_ ? `<div class="choices">${await_.choices!.map((c) => `<button class="choice" data-act="choice" data-arg="${c.id}"><b>${c.label}</b><small>${c.hint}</small></button>`).join('')}</div>` : ''}</div></div>` : '<p>Aucune transmission.</p>'}
@@ -646,7 +669,7 @@ export class Ui {
         </div></div>
         <div class="actions"><button class="btn" data-act="open" data-arg="roster">${ICON.team} Équipe</button><button class="btn" data-act="open" data-arg="shelter">${ICON.home} Abri</button><button class="btn ghost" data-act="new">Nouvelle partie</button>${alive || d.day >= LAST_DAY ? `<button class="btn primary" data-act="nextday">${d.day >= LAST_DAY ? 'Épilogue' : 'Jour suivant'}</button>` : ''}</div></div>`;
     } else if (this.screen === 'ending' && s.ending) {
-      html = `<div class="sheet debrief">${head('Dernier signal · épilogue', `${LAST_DAY} jours`, false)}<div class="body ending">
+      html = `<div class="sheet debrief">${head('Dernier signal · épilogue', `${LAST_DAY} jours`, false)}<div class="body ending"><div class="scene" style="background-image:url(./art/s-${s.persistent.final === 'leave' ? 'boat' : 'final'}.webp)"></div>
         ${s.ending.map((l, i) => `<p style="animation-delay:${(i * 0.9).toFixed(1)}s">${esc(l)}</p>`).join('')}
         ${s.rescued.length ? `<div class="npcs" style="margin-top:12px">${[...new Set(s.rescued)].map((n) => NPCS[n]).filter(Boolean).map((n) => `<div class="npc"><div class="portrait">${portrait(n.id, n.color)}</div><div><b>${n.name}</b><small>${n.role}</small></div></div>`).join('')}</div>` : ''}
         </div><div class="actions"><button class="btn" data-act="open" data-arg="roster">${ICON.team} Équipe</button><button class="btn primary" data-act="new">Nouvelle partie</button></div></div>`;
@@ -685,6 +708,7 @@ export class Ui {
       <div class="lvl"><b>Niv. ${sv.level}</b><span class="meter"><i style="width:${Math.round(levelProgress(sv) * 100)}%"></i></span><small>${LEVELS[sv.level] !== undefined ? `${sv.xp}/${LEVELS[sv.level]} XP` : 'max'}</small></div>
       ${sv.alive && sv.perkPoints > 0 ? `<div class="offer"><h4>★ Nouvelle compétence</h4>${perkOffer(sv).map((p) => `<button class="choice" data-act="perk" data-arg="${sv.id}:${p.id}"><b>${p.name}</b><small>${p.desc}</small></button>`).join('')}</div>` : ''}
       ${stat('Santé', sv.health, 'hp')}${stat('Stress', sv.fear, 'fear')}${stat('Fatigue', sv.fatigue, 'fat')}${stat('Courage', sv.courage, 'hp')}${stat('Confiance', sv.trust, 'hp')}
+      <h4>Aptitudes</h4><div class="apts">${(['scout', 'retrieve', 'hold', 'rescue'] as const).map((k) => `<div style="--oc:${ORDER_COLOR[k]}">${ICON[k]}<span>${ORDER_LABEL[k]}</span><span class="apt">${'<i class="on"></i>'.repeat(aptitude(sv, k))}${'<i></i>'.repeat(5 - aptitude(sv, k))}</span></div>`).join('')}</div>
       <h4>Équipement</h4><div class="pills">${gear.map((e) => `<span class="pill">${e}</span>`).join('')}</div>
       <h4>Relations</h4><div class="pills">${rel}</div>
       <h4>Mémoire</h4>${[...sv.memory].reverse().slice(0, 4).map((m) => `<div class="mem ${m.tone < -0.15 ? 'bad' : m.tone > 0.15 ? 'good' : ''}">${m.day > 0 ? `J${m.day} · ` : ''}${esc(m.text)}</div>`).join('')}

@@ -37,12 +37,12 @@ function fire(s: GameState, k: Kind, ev: SimEvent[]): boolean {
       th.state = 'lured';
       th.goal = pick(s, near);
       th.timer = 25;
-      systemMsg(s, ev, `Mouvement de meute ${NODE[zoneOf(th)].x > 4 ? 'à l’est du canal' : 'à l’ouest du canal'}. Quelque chose les a mis en marche.`, 'alert');
+      systemMsg(s, ev, `Mouvement de meute ${NODE[zoneOf(th)].x > 4 ? 'à l’est du canal' : 'à l’ouest du canal'}. Quelque chose les a mis en marche.`, 'alert', 'pack');
       return true;
     }
     case 'burst':
       s.flags.burstUntil = s.time + 24;
-      systemMsg(s, ev, 'Parasites sur toutes les fréquences. La liaison va sauter quelques secondes.', 'alert');
+      systemMsg(s, ev, 'Parasites sur toutes les fréquences. La liaison va sauter quelques secondes.', 'alert', 'burst');
       return true;
     case 'block': {
       const opts = BLOCKABLE.filter(([a, b]) => !s.flags['blk_' + [a, b].sort().join('|')] && !s.survivors.some((v) => v.alive && v.to && [v.at, v.to].sort().join('|') === [a, b].sort().join('|')));
@@ -51,7 +51,7 @@ function fire(s: GameState, k: Kind, ev: SimEvent[]): boolean {
       const key = [a, b].sort().join('|');
       s.flags['blk_' + key] = true;
       s.flags['blkUntil_' + key] = s.time + 75;
-      systemMsg(s, ev, `Une façade s’est effondrée entre ${NODE[a].name} et ${NODE[b].name}. Passage coupé pour l’instant.`, 'alert');
+      systemMsg(s, ev, `Une façade s’est effondrée entre ${NODE[a].name} et ${NODE[b].name}. Passage coupé pour l’instant.`, 'alert', 'block');
       ev.push({ type: 'noise', node: b, power: 1 });
       return true;
     }
@@ -61,7 +61,7 @@ function fire(s: GameState, k: Kind, ev: SimEvent[]): boolean {
       if (!nodes.length) return false;
       const n = pick(s, nodes);
       noise(s, ev, n, 1);
-      systemMsg(s, ev, `Une alarme de voiture hurle vers ${NODE[n].name}. Tout ce qui écoute va y aller.`);
+      systemMsg(s, ev, `Une alarme de voiture hurle vers ${NODE[n].name}. Tout ce qui écoute va y aller.`, 'system', 'alarm');
       return true;
     }
     case 'breather': {
@@ -75,7 +75,7 @@ function fire(s: GameState, k: Kind, ev: SimEvent[]): boolean {
     case 'rain':
       if (s.time < s.storm.end && s.time > s.storm.start - 40) return false;
       s.flags.rainUntil = s.time + 75;
-      systemMsg(s, ev, 'Il se met à pleuvoir. Le bruit de l’eau couvre les pas : ils seront plus durs à repérer.');
+      systemMsg(s, ev, 'Il se met à pleuvoir. Le bruit de l’eau couvre les pas : ils seront plus durs à repérer.', 'system', 'rain');
       return true;
     case 'cache': {
       const sv = out.find((v) => v.linked && NODE[zoneOf(v)].kind !== 'interior');
@@ -88,7 +88,7 @@ function fire(s: GameState, k: Kind, ev: SimEvent[]): boolean {
       if (med) s.loot[n].medicine += 1;
       else s.loot[n].supplies += 2;
       s.intel[n].lootKnown = true;
-      say(s, ev, sv, sv.id === 'jo' ? `Y a un sac abandonné vers ${NODE[n].name}. Ça se ramasse.` : `Je vois un sac ${med ? 'de pharmacie' : 'à dos'} abandonné vers ${NODE[n].name}. Ça vaut un détour ?`);
+      say(s, ev, sv, sv.id === 'jo' ? `Y a un sac abandonné vers ${NODE[n].name}. Ça se ramasse.` : `Je vois un sac ${med ? 'de pharmacie' : 'à dos'} abandonné vers ${NODE[n].name}. Ça vaut un détour ?`, 'report', 'cache');
       return true;
     }
     case 'stranger': {
@@ -99,6 +99,7 @@ function fire(s: GameState, k: Kind, ev: SimEvent[]): boolean {
       const msg = pushRadio(s, ev, {
         from: 'unknown',
         fromName: 'Inconnu',
+        art: 'stranger',
         text: `…allô ? Est-ce que cette radio marche ? Je suis caché dans une voiture, vers ${NODE[n].name}. Je les entends tourner autour. Je n’ai plus de voix pour crier. S’il vous plaît.`,
         kind: 'incident',
         incident: 'stranger',

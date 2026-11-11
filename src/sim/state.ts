@@ -4,7 +4,7 @@ import { NODE, NODES } from './world';
 import { emptyStock, pushRadio, rnd } from './core';
 import { mission } from './missions';
 
-export const SAVE_VERSION = 5;
+export const SAVE_VERSION = 6;
 export const MISSION_DURATION = 600;
 
 function makeSurvivor(p: Partial<Survivor> & Pick<Survivor, 'id' | 'name' | 'short' | 'role' | 'color'>): Survivor {
@@ -26,6 +26,8 @@ function makeSurvivor(p: Partial<Survivor> & Pick<Survivor, 'id' | 'name' | 'sho
     medic: false,
     relations: {},
     memory: [],
+    skill: { scout: 3, retrieve: 3, hold: 3, rescue: 3 },
+    practice: {},
     xp: 0,
     level: 1,
     perkPoints: 0,
@@ -76,6 +78,7 @@ export function newGame(seed = (Date.now() & 0x7fffffff) || 1): GameState {
         trust: 65,
         ammo: 3,
         medic: true,
+        skill: { scout: 2, retrieve: 3, hold: 3, rescue: 5 },
         relations: { jo: 45, lena: 72 },
         memory: [{ day: 0, time: 0, text: "A tenu l'infirmerie d'ECHO-7 seule pendant onze jours.", tone: 0.4 }],
       }),
@@ -93,6 +96,7 @@ export function newGame(seed = (Date.now() & 0x7fffffff) || 1): GameState {
         noise: 1.2,
         carryCap: 5,
         melee: true,
+        skill: { scout: 2, retrieve: 5, hold: 4, rescue: 3 },
         relations: { mara: 45, lena: 55 },
         memory: [{ day: 0, time: 0, text: 'Un opérateur précédent a envoyé son frère au checkpoint. Il n’est pas revenu.', tone: -0.7, kind: 'brother', node: 'bridge_e' }],
       }),
@@ -109,6 +113,7 @@ export function newGame(seed = (Date.now() & 0x7fffffff) || 1): GameState {
         fear: 25,
         speed: 1.2,
         noise: 0.7,
+        skill: { scout: 5, retrieve: 2, hold: 2, rescue: 2 },
         carryCap: 2,
         relations: { mara: 72, jo: 55 },
         memory: [{ day: 0, time: 0, text: 'Mara l’a trouvée dans une cave du quai nord. Elle n’en parle pas.', tone: -0.3, kind: 'cave', node: 'quay_n' }],
@@ -210,6 +215,7 @@ export function setupDay(s: GameState, ev: SimEvent[]) {
     text,
     kind: 'incident',
     incident: 'briefing',
+    art: ['shelter', 'shelter', 'unknown', 'burst', 'boat'][Math.min(4, s.day - 1)],
     choices: m.choices ?? [{ id: 'ok', label: 'Reçu. On y va.', hint: m.hint }],
   });
   s.awaiting = msg.id;

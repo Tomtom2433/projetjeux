@@ -31,7 +31,8 @@ import { line, lootText, nodeName, recall } from './text';
 import { cryOut, protest, thank, tickBanter, welcome } from './banter';
 import { setupDay, storageCap } from './state';
 import { tickDirector } from './director';
-import { gainXp, hasPerk, levelUp } from './perks';
+import { aptitude, gainXp, hasPerk, levelUp, practise } from './perks';
+import { ORDER_LABEL } from './text';
 import { LAST_DAY, buildEnding, mission, objective, objectiveStatus, type ObjectiveStatus } from './missions';
 
 export const TICK = 0.25;
@@ -78,6 +79,7 @@ export function obeyScore(s: GameState, sv: Survivor, order: Order): number {
   const far = path && path.length > 4 ? darkness(s) * 0.12 : 0;
   return (
     0.5 +
+    (aptitude(sv, order.type) - 3) * 0.04 +
     (sv.trust / 100) * 0.35 +
     (sv.courage / 100) * 0.25 -
     (sv.fear / 100) * (0.25 + 0.5 * risk) -
@@ -138,6 +140,7 @@ function speedOf(s: GameState, sv: Survivor): number {
   let v = 1.55 * sv.speed * (1 - sv.fatigue / 260);
   if (stockTotal(sv.carrying) > 0) v *= 0.92;
   const triage = hasPerk(sv, 'triage');
+  if (escorting(sv) || sv.helping) v *= 0.88 + aptitude(sv, 'rescue') * 0.04;
   if (sv.escort.patient) v *= triage ? 0.78 : 0.55;
   else if (sv.escort.ines || sv.escort.sacha || sv.escort.vogel || sv.escort.stranger) v *= triage ? 0.96 : 0.85;
   if (hasPerk(sv, 'runner')) v *= 1.12;
@@ -227,6 +230,7 @@ function arriveHome(s: GameState, sv: Survivor, ev: SimEvent[]) {
     s.resources.supplies = Math.min(cap, s.resources.supplies + 1);
   }
   gainXp(s, sv, people.length * 25 + (brought ? 8 : 0));
+  if (people.length) practise(s, sv, 'rescue');
   for (const p of people) {
     s.rescued.push(p);
     s.rescuedToday.push(p);
@@ -282,9 +286,9 @@ function runOrder(s: GameState, sv: Survivor, dt: number, ev: SimEvent[]) {
     onArrive(s, sv, ev);
     if (sv.order !== o || o.stage !== 'go' || s.awaiting !== null) return;
     o.stage = 'work';
-    if (o.type === 'scout') sv.work = (sv.equipment.includes('Jumelles') ? 4 : 7) * (hasPerk(sv, 'lynx') ? 0.5 : 1);
+    if (o.type === 'scout') sv.work = (sv.equipment.includes('Jumelles') ? 4 : 7) * (hasPerk(sv, 'lynx') ? 0.5 : 1) * (1.3 - aptitude(sv, 'scout') * 0.1);
     else if (o.type === 'retrieve') {
-      sv.work = 12;
+      sv.work = 12 * (1.36 - aptitude(sv, 'retrieve') * 0.12);
       say(s, ev, sv, line(s, sv, 'search_start', vars));
     } else sv.work = 2;
     return;
@@ -297,6 +301,7 @@ function runOrder(s: GameState, sv: Survivor, dt: number, ev: SimEvent[]) {
     perceive(s, sv, true);
     s.flags['scouted_' + target] = true;
     gainXp(s, sv, 12);
+    practise(s, sv, 'scout');
     if (hasPerk(sv, 'lynx')) for (const n of [target, ...neighbors(target)]) s.intel[n].lootKnown = true;
     const n = Math.round(believedThreat(s, sv, target));
     const around = neighbors(target).reduce((a, m) => a + (NODE[m].kind !== 'interior' ? Math.round(believedThreat(s, sv, m)) : 0), 0);
@@ -323,6 +328,7 @@ function runOrder(s: GameState, sv: Survivor, dt: number, ev: SimEvent[]) {
         sv.carrying.supplies++;
       }
       gainXp(s, sv, Math.min(20, stockTotal(got) * 6));
+      practise(s, sv, 'retrieve');
       say(s, ev, sv, line(s, sv, 'search_found', { loot: lootText(got) }));
       o.stage = 'return';
     } else {
@@ -342,11 +348,12 @@ function runOrder(s: GameState, sv: Survivor, dt: number, ev: SimEvent[]) {
 
 function pickUp(s: GameState, sv: Survivor, ally: Survivor, ev: SimEvent[]) {
   ally.carriedBy = sv.id;
-  ally.health = Math.max(ally.health, hasPerk(sv, 'surehands') ? 50 : sv.medic ? 30 : 15);
+  ally.health = Math.max(ally.health, (hasPerk(sv, 'surehands') ? 35 : sv.medic ? 15 : 5) + aptitude(sv, 'rescue') * 4);
+  practise(s, sv, 'rescue');
   gainXp(s, sv, 20);
   ally.bleed = 9999;
   sv.helping = ally.id;
-  say(s, ev, sv, line(s, sv, 'help_got', { ally: ally.short }));
+  say(s, ev, sv, line(s, sv, 'help_got', { ally: ally.short }), 'report', 'rescue');
 }
 
 // ---------------------------------------------------------------- threats & encounters
@@ -439,7 +446,8 @@ function encounter(s: GameState, sv: Survivor, prox: Proximity, ev: SimEvent[]) 
       if (sv.tactic === 'stealth' && node.kind === 'bridge') p *= 0.3;
       if (hasPerk(sv, 'shadow')) p *= 0.7;
       if (s.time < ((s.flags.rainUntil as number) ?? -1)) p *= 0.75;
-      if (sv.mode === 'order' && sv.order?.type === 'scout') p *= 0.6;
+      if (sv.mode === 'order' && sv.order?.type === 'scout') p *= 1.02 - aptitude(sv, 'scout') * 0.11;
+      if (sv.mode === 'order' && sv.order?.type === 'hold') p *= 1.3 - aptitude(sv, 'hold') * 0.12;
       if (sv.escort.patient) p *= 1.3;
       if (stockTotal(sv.carrying) > 0) p *= 1.1;
       p *= 1 - darkness(s) * 0.2;
@@ -786,7 +794,7 @@ export function step(s: GameState, dt: number, ev: SimEvent[]) {
 
   if (!s.flags.stormWarned && s.time >= s.storm.start - 25) {
     s.flags.stormWarned = true;
-    systemMsg(s, ev, 'Front orageux à l’ouest. Interférences radio attendues dans moins d’une minute.', 'alert');
+    systemMsg(s, ev, 'Front orageux à l’ouest. Interférences radio attendues dans moins d’une minute.', 'alert', 'burst');
   }
   if (!s.flags.duskWarned && s.time >= s.duration - 120) {
     s.flags.duskWarned = true;
@@ -934,6 +942,8 @@ export function endDay(s: GameState, ev: SimEvent[]) {
     gainXp(s, sv, 8 + (obj.done ? 15 : 0));
     xp[sv.id] = (s.flags['xp_' + sv.id] as number) ?? 0;
     if (levelUp(sv) > 0) levelUps.push(`${sv.short} passe niveau ${sv.level}`);
+    for (const type of ['scout', 'retrieve', 'hold', 'rescue']) if (s.flags['apt_' + sv.id + '_' + type]) levelUps.push(`${sv.short} progresse en « ${ORDER_LABEL[type]} » (${sv.skill[type]}/5)`);
+    if (sv.order?.type === 'hold' || s.flags['held_' + sv.id]) practise(s, sv, 'hold');
   }
   buildDebrief(s, nightNotes, obj, title);
   s.debrief!.xp = xp;

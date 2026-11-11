@@ -4,7 +4,7 @@ import type { Choice, GameState, SimEvent, Survivor } from './types';
 import { meetStranger } from './director';
 import { clamp, pushRadio, remember, rnd, say, shiftTrust, survivor, survivorSignal, systemMsg, zoneOf } from './core';
 
-function raise(s: GameState, ev: SimEvent[], incident: string, sv: Survivor | null, text: string, choices: Choice[]) {
+function raise(s: GameState, ev: SimEvent[], incident: string, sv: Survivor | null, text: string, choices: Choice[], art?: string) {
   s.incidents[incident] = { state: 'active', by: sv?.id };
   const msg = pushRadio(s, ev, {
     from: sv?.id ?? 'unknown',
@@ -14,6 +14,7 @@ function raise(s: GameState, ev: SimEvent[], incident: string, sv: Survivor | nu
     incident,
     choices,
     signal: sv ? survivorSignal(s, sv) : 0.34,
+    art: art ?? (incident === 'bridge' || incident === 'hospital' ? `${incident}-${sv?.id}` : incident),
   });
   s.awaiting = msg.id;
 }
@@ -51,6 +52,7 @@ export function tickIncidents(s: GameState, ev: SimEvent[]) {
     const msg = pushRadio(s, ev, {
       from: 'unknown',
       fromName: 'Relais fluvial',
+      art: 'boat',
       text: '…à toutes les stations du canal… un bateau descend demain soir… il passera l’écluse des Tanneurs à la tombée de la nuit… douze places, pas une de plus… kkrsh… ne répondez pas sur cette fréquence, ils écoutent le bruit…',
       kind: 'incident',
       incident: 'boat',
@@ -291,7 +293,7 @@ function resolveUnknownSite(s: GameState, sv: Survivor, ev: SimEvent[]) {
     sv.fear = clamp(sv.fear + 25);
     shiftTrust(sv, -8);
     remember(s, sv, 'Le signal des Tanneurs était un piège. L’opérateur l’y avait envoyé·e.', -0.7, 'lure', 'apts');
-    say(s, ev, sv, 'C’est un magnétophone ! Sur une table ! Et ils sont dans la cage d’escalier— c’est un piège !', 'alert');
+    say(s, ev, sv, 'C’est un magnétophone ! Sur une table ! Et ils sont dans la cage d’escalier— c’est un piège !', 'alert', 'unknown');
     s.unresolved.push('Tanneurs : quelqu’un a posé cet émetteur. On ne sait pas qui.');
   }
 }

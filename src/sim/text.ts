@@ -217,6 +217,15 @@ export const ORDER_LABEL: Record<string, string> = {
   rescue: 'Secourir',
 };
 
+/** One colour per kind of order, used everywhere an order shows up (buttons, routes, rings, tags). */
+export const ORDER_COLOR: Record<string, string> = {
+  scout: '#4cc9f0',
+  retrieve: '#f2b84b',
+  hold: '#9fb0d4',
+  retreat: '#b79cff',
+  rescue: '#ff6f91',
+};
+
 export const MODE_LABEL: Record<string, string> = {
   idle: 'En attente',
   order: 'En mission',

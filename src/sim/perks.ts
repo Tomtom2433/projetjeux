@@ -30,6 +30,20 @@ export const PERKS: Record<string, Perk[]> = {
 
 export const LEVELS = [0, 40, 100, 180, 280];
 
+/** Aptitude of a survivor for an order type, 1..5 (3 when unknown). */
+export const aptitude = (sv: Survivor, type: string) => sv.skill?.[type] ?? 3;
+
+/** A completed order is practice: three successes raise the aptitude by one. */
+export function practise(s: GameState, sv: Survivor, type: string) {
+  if (!sv.skill || aptitude(sv, type) >= 5) return;
+  sv.practice[type] = (sv.practice[type] ?? 0) + 1;
+  if (sv.practice[type] >= 3) {
+    sv.practice[type] = 0;
+    sv.skill[type] = aptitude(sv, type) + 1;
+    s.flags['apt_' + sv.id + '_' + type] = sv.skill[type];
+  }
+}
+
 export const hasPerk = (sv: Survivor, id: string) => sv.perks.includes(id);
 
 export function gainXp(s: GameState, sv: Survivor, n: number) {

@@ -5,7 +5,7 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import type { GameState, NodeId, Survivor } from '../sim/types';
 import { NODE, NODES, EDGES } from '../sim/world';
 import { stockTotal, survivorPos, threatPos, zoneOf } from '../sim/core';
-import { fmtTime, MODE_LABEL } from '../sim/text';
+import { fmtTime, MODE_LABEL, ORDER_COLOR } from '../sim/text';
 import { objectiveStatus } from '../sim/missions';
 import type { Stage } from './scene';
 import type { City } from './city';
@@ -15,6 +15,9 @@ export interface UiView {
   selected: string | null;
   targets: NodeId[];
   chosen: NodeId | null;
+  /** Order being composed, and the selected survivor's current order: they set the colours. */
+  orderType?: string | null;
+  activeType?: string | null;
   /** Polyline of the order being previewed. */
   route: [number, number][] | null;
   /** Polyline of the selected survivor's current order. */
@@ -351,6 +354,8 @@ export class Actors {
   }
 
   setRoutes(ui: UiView) {
+    (this.routeMesh.material as THREE.MeshBasicMaterial).color.set(ORDER_COLOR[ui.orderType ?? 'scout'] ?? '#3fe0c5');
+    (this.activeMesh.material as THREE.MeshBasicMaterial).color.set(ORDER_COLOR[ui.activeType ?? 'retreat'] ?? '#b9a6ff');
     this.setRibbon(this.routeMesh, ui.route);
     this.setRibbon(this.activeMesh, ui.route ? null : ui.activeRoute);
   }
@@ -526,7 +531,8 @@ export class Actors {
         const state = !sv.linked ? `signal perdu · ${fmtTime(s.time - sv.lastReport.time)}` : sv.mode === 'order' && sv.order ? orderWord(sv) : MODE_LABEL[sv.mode];
         const cls = 'tag sv' + (ui.selected === sv.id ? ' sel' : '') + (!sv.linked ? ' lost' : '') + (sv.mode === 'flee' || sv.mode === 'down' || sv.mode === 'fight' ? ' danger' : '');
         if (tag.className !== cls) tag.className = cls;
-        const html = `<b>${sv.short}</b>${ui.selected === sv.id || sv.mode !== 'idle' || !sv.linked ? `<i>${state}</i>` : ''}`;
+        const oc = sv.linked && sv.mode === 'order' && sv.order ? ORDER_COLOR[sv.order.stage === 'return' ? 'retreat' : sv.order.type] : '';
+        const html = `<b>${sv.short}</b>${ui.selected === sv.id || sv.mode !== 'idle' || !sv.linked ? `<i${oc ? ` style="color:${oc}"` : ''}>${state}</i>` : ''}`;
         if (tag.dataset.h !== html) {
           tag.dataset.h = html;
           tag.innerHTML = html;
@@ -601,6 +607,11 @@ export class Actors {
 
     // ---------------- node rings + tags
     const goals = objectiveStatus(s).nodes;
+    const orderColor = ORDER_COLOR[ui.orderType ?? ''] ?? '#3fe0c5';
+    if (this.labels.dataset.oc !== orderColor) {
+      this.labels.dataset.oc = orderColor;
+      this.labels.style.setProperty('--oc', orderColor);
+    }
     NODES.forEach((node, i) => {
       const ring = this.rings[i];
       const isTarget = ui.targets.includes(node.id);
@@ -612,7 +623,7 @@ export class Actors {
         const pulse = chosen ? 1.25 : 1 + Math.sin(t * 3.2 + i) * 0.1;
         ring.scale.setScalar(pulse);
         (ring.material as THREE.MeshBasicMaterial).opacity = chosen ? 1 : 0.7;
-        (ring.material as THREE.MeshBasicMaterial).color.setHex(chosen ? 0xffffff : 0x3fe0c5);
+        (ring.material as THREE.MeshBasicMaterial).color.set(chosen ? '#ffffff' : orderColor);
       }
       const tag = this.nodeTags.get(node.id)!;
       const it = s.intel[node.id];

@@ -95,17 +95,17 @@ export function pushRadio(
 }
 
 /** A survivor speaks. If the link is down the words wait in the outbox. */
-export function say(s: GameState, ev: SimEvent[], sv: Survivor, text: string, kind: RadioMessage['kind'] = 'report') {
+export function say(s: GameState, ev: SimEvent[], sv: Survivor, text: string, kind: RadioMessage['kind'] = 'report', art?: string) {
   if (!sv.linked) {
     sv.outbox.push({ time: s.time, text });
     if (sv.outbox.length > 6) sv.outbox.shift();
     return;
   }
-  pushRadio(s, ev, { from: sv.id, fromName: sv.short, text, kind, signal: survivorSignal(s, sv) });
+  pushRadio(s, ev, { from: sv.id, fromName: sv.short, text, kind, signal: survivorSignal(s, sv), art });
 }
 
-export function systemMsg(s: GameState, ev: SimEvent[], text: string, kind: RadioMessage['kind'] = 'system') {
-  pushRadio(s, ev, { from: 'echo', fromName: 'ECHO-7', text, kind, signal: 1 });
+export function systemMsg(s: GameState, ev: SimEvent[], text: string, kind: RadioMessage['kind'] = 'system', art?: string) {
+  pushRadio(s, ev, { from: 'echo', fromName: 'ECHO-7', text, kind, signal: 1, art });
 }
 
 export function remember(s: GameState, sv: Survivor, text: string, tone: number, kind?: string, node?: NodeId) {

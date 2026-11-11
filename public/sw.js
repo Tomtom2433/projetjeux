@@ -1,8 +1,22 @@
 // Offline-first: cache everything same-origin after the first visit.
-const CACHE = 'last-signal-v1';
+const CACHE = 'last-signal-v2';
 
 self.addEventListener('install', (e) => {
-  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(['./', './manifest.webmanifest', './icon.svg'])).then(() => self.skipWaiting()));
+  e.waitUntil(
+    caches
+      .open(CACHE)
+      .then(async (c) => {
+        await c.addAll(['./', './manifest.webmanifest', './icon.svg']);
+        // illustrations: fetched once so events stay illustrated offline
+        try {
+          const list = await (await fetch('./art/manifest.json')).json();
+          await c.addAll(list.map((f) => './art/' + f));
+        } catch {
+          /* art will be cached on first view instead */
+        }
+      })
+      .then(() => self.skipWaiting()),
+  );
 });
 
 self.addEventListener('activate', (e) => {
@@ -27,6 +41,6 @@ self.addEventListener('fetch', (e) => {
     })
     .catch(() => caches.match(req).then((hit) => hit || caches.match('./')));
   // Hashed assets never change: serve from cache first. Pages: network first.
-  if (/\/assets\//.test(req.url)) e.respondWith(caches.match(req).then((hit) => hit || fresh));
+  if (/\/(assets|art)\//.test(req.url)) e.respondWith(caches.match(req).then((hit) => hit || fresh));
   else e.respondWith(fresh);
 });

@@ -82,6 +82,9 @@ export interface Survivor {
   medic: boolean;
   relations: Record<string, number>;
   memory: MemoryEntry[];
+  /** Aptitude per order type, 1..5. Grows with practice. */
+  skill: Record<string, number>;
+  practice: Record<string, number>;
   xp: number;
   level: number;
   perkPoints: number;
@@ -153,6 +156,8 @@ export interface RadioMessage {
   incident?: string;
   choices?: Choice[];
   chosen?: string;
+  /** Key of the illustration that goes with this message (public/art/s-<key>.webp). */
+  art?: string;
 }
 
 export interface Shelter {

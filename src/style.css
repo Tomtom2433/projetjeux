@@ -34,8 +34,8 @@ button { font: inherit; color: inherit; background: none; border: 0; cursor: poi
 .tag.sv.lost b { opacity: 0.7; border-left-style: dashed; }
 .tag.sv.lost i { color: var(--warn); }
 .tag.sv.danger i { color: var(--danger); font-weight: 600; }
-.tag.node b { font-size: 11px; padding: 2px 7px; border-radius: 3px; background: rgba(8, 10, 15, 0.8); color: var(--teal); border: 1px solid rgba(63, 224, 197, 0.5); }
-.tag.node.chosen b { background: var(--teal); color: #06231e; }
+.tag.node b { font-size: 11px; padding: 2px 7px; border-radius: 3px; background: rgba(8, 10, 15, 0.8); color: var(--oc, var(--teal)); border: 1px solid color-mix(in srgb, var(--oc, var(--teal)) 55%, transparent); }
+.tag.node.chosen b { background: var(--oc, var(--teal)); color: #0a0d12; }
 .tag.node span { font-size: 10px; padding: 1px 6px; border-radius: 3px; background: rgba(8, 10, 15, 0.72); }
 .tag.node .threat { color: #f3a89c; border: 1px dashed rgba(255, 107, 87, 0.6); }
 .tag.node .threat.live { color: #fff; background: rgba(200, 50, 36, 0.85); border-style: solid; }
@@ -121,8 +121,11 @@ button { font: inherit; color: inherit; background: none; border: 0; cursor: poi
 #ticker.alert { border-color: rgba(255, 107, 87, 0.55); }
 #orders { display: flex; gap: 5px; padding: 5px; flex-wrap: wrap; justify-content: center; }
 #orders .o { min-width: 74px; min-height: 44px; padding: 4px 8px; border-radius: 6px; background: rgba(255, 255, 255, 0.05); border: 1px solid var(--line); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; font-size: 10.5px; font-weight: 600; }
-#orders .o svg { width: 18px; height: 18px; color: var(--teal); }
-#orders .o.on { background: rgba(63, 224, 197, 0.16); border-color: var(--teal); }
+#orders .o { --oc: var(--teal); }
+#orders .o svg { width: 18px; height: 18px; color: var(--oc); }
+#orders .o.on { background: color-mix(in srgb, var(--oc) 18%, transparent); border-color: var(--oc); }
+#orders .confirm { border-left: 3px solid var(--oc, var(--teal)); padding-left: 9px; }
+#orders .confirm .btn.primary { background: var(--oc, var(--teal)); }
 #orders .o[disabled] { opacity: 0.35; pointer-events: none; }
 #orders .confirm { display: flex; gap: 8px; align-items: center; padding: 2px 4px; }
 #orders .confirm p { margin: 0; font-size: 11.5px; line-height: 1.3; max-width: 300px; }
@@ -218,6 +221,33 @@ h4.sec { margin: 14px 0 6px; font-size: 9.5px; letter-spacing: 0.16em; text-tran
 .meter i { transition: width 0.45s ease; }
 .sheet { animation: pop 0.2s ease; }
 @keyframes pop { from { opacity: 0; transform: translateY(8px) scale(0.985); } }
+.pimg { width: 100%; height: 100%; background-size: cover; background-position: center 20%; position: relative; }
+.chip .av .pimg, .portrait .pimg { display: block; }
+.portrait { position: relative; }
+.pimg::after { content: ''; position: absolute; inset: 0; pointer-events: none; }
+.pimg.hurt::after { background: radial-gradient(circle at 50% 45%, transparent 35%, rgba(170, 28, 18, 0.6)); box-shadow: inset 0 0 0 2px rgba(255, 107, 87, 0.7); }
+.pimg.afraid { filter: saturate(0.75) contrast(1.08); }
+.pimg.afraid::after { background: radial-gradient(circle at 50% 45%, transparent 40%, rgba(120, 90, 220, 0.5)); }
+.pimg.lost { filter: grayscale(1) brightness(0.75); }
+.pimg.lost::after { background: repeating-linear-gradient(0deg, rgba(210, 220, 235, 0.22) 0 1px, transparent 1px 4px); animation: static 0.25s steps(2) infinite; }
+.pimg.dead { filter: grayscale(1) brightness(0.4); }
+.pimg.dead::after { background: linear-gradient(45deg, transparent 47%, rgba(255, 107, 87, 0.85) 47% 53%, transparent 53%), linear-gradient(-45deg, transparent 47%, rgba(255, 107, 87, 0.85) 47% 53%, transparent 53%); }
+@keyframes static { to { background-position: 0 3px; } }
+.scene { width: 100%; aspect-ratio: 21 / 8; background-size: cover; background-position: center 35%; border-radius: 8px; margin-bottom: 10px; border: 1px solid var(--line); animation: scenein 0.9s ease; }
+.scene.hero { aspect-ratio: 21 / 7; margin: 0; border-radius: 0; border: 0; border-bottom: 1px solid var(--line); mask-image: linear-gradient(#000 60%, transparent); -webkit-mask-image: linear-gradient(#000 60%, transparent); }
+@keyframes scenein { from { opacity: 0; transform: scale(1.03); } }
+#eventcard { position: absolute; right: calc(8px + var(--sr)); top: calc(58px + var(--st)); width: 250px; padding: 0; border-radius: 10px; overflow: hidden; background: rgba(11, 14, 20, 0.94); border: 1px solid var(--line); text-align: left; box-shadow: 0 8px 26px rgba(0, 0, 0, 0.55); }
+#eventcard.show { animation: cardin 6.5s ease forwards; }
+#eventcard .scene { aspect-ratio: 16 / 8; margin: 0; border: 0; border-radius: 0; animation: none; }
+#eventcard p { margin: 0; padding: 7px 10px 9px; font-size: 11.5px; line-height: 1.35; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+@keyframes cardin { 0% { opacity: 0; transform: translateX(20px); } 6%, 90% { opacity: 1; transform: none; } 100% { opacity: 0; } }
+.apt { display: inline-flex; gap: 2px; height: 4px; }
+.apt i { width: 7px; height: 4px; border-radius: 1px; background: rgba(255, 255, 255, 0.16); }
+.apt i.on { background: var(--oc, var(--teal)); }
+.apts { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 10px; }
+.apts div { display: grid; grid-template-columns: 14px 1fr auto; gap: 5px; align-items: center; font-size: 10.5px; color: var(--oc); }
+.apts svg { width: 13px; height: 13px; }
+.apts span:nth-child(2) { color: #c3c7cf; }
 /* shelter */
 .up { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
 .upc { border: 1px solid var(--line); border-radius: 10px; padding: 10px; display: flex; flex-direction: column; gap: 6px; background: rgba(255, 255, 255, 0.025); }
@@ -279,6 +309,10 @@ h4.sec { margin: 14px 0 6px; font-size: 9.5px; letter-spacing: 0.16em; text-tran
   .btn { min-width: 38px; min-height: 38px; padding: 0 8px; }
   .btn .lbl { display: none; }
   #minimap { width: 112px; height: 84px; }
+  #eventcard { width: 200px; top: calc(52px + var(--st)); }
+  .scene { aspect-ratio: auto; height: 104px; margin-bottom: 6px; }
+  .scene.hero { height: 96px; }
+  #eventcard .scene { height: 92px; }
   #orders .o { min-width: 62px; min-height: 40px; }
   .radio { grid-template-columns: 104px 1fr; gap: 10px; }
   .radio .msg { font-size: 12.5px; min-height: 48px; margin-bottom: 6px; }

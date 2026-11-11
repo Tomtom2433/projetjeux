@@ -307,12 +307,13 @@ class Game implements GameApi {
         const p = this.actors.shownPos(sv);
         preview = polyline(this.route, zoneOf(sv) === this.route[0] && sv.to ? p : undefined) ?? null;
       }
-      this.uiView = { selected: this.selected, targets: this.targets, chosen: this.chosen, route: preview, activeRoute: active };
+      this.uiView = { selected: this.selected, targets: this.targets, chosen: this.chosen, route: preview, activeRoute: active, orderType: this.orderType, activeType: sv?.order ? (sv.order.stage === 'return' ? 'retreat' : sv.order.type) : null };
       this.actors.setRoutes(this.uiView);
     }
     this.uiView.selected = this.selected;
     this.uiView.targets = this.targets;
     this.uiView.chosen = this.chosen;
+    this.uiView.orderType = this.orderType;
 
     const dark = this.started ? darkness(s) : 0.25;
     const storm = this.started ? stormLevel(s) : 0;
