@@ -19,6 +19,8 @@ export interface Pose {
   crouch: number;
   /** Arms spread sideways (binoculars), 0..1. */
   spread: number;
+  /** Head tilt forward, radians (talking, nodding). */
+  nod?: number;
 }
 
 interface BoneRef {
@@ -52,7 +54,9 @@ export class RiggedFigure {
   private neck = '';
 
   constructor(gltf: THREE.Object3D, height: number, shadows: boolean) {
-    // the cached scene may have been posed by a previous game: go back to the bind pose first
+    // The cached scene may still hang under a previous game's character (turned, scaled, posed):
+    // detach it and go back to the bind pose, so the skeleton is measured in its own frame.
+    gltf.removeFromParent();
     gltf.traverse((o) => {
       const bone = o as THREE.Bone;
       if (!bone.isBone) return;
@@ -179,7 +183,7 @@ export class RiggedFigure {
       this.turn(arm[1], S, (0.22 + Math.max(0, target) * 0.6) * f);
     }
     this.turn(this.spine, S, (p.gait * 0.1 + p.crouch * 0.45) * f);
-    this.turn(this.neck, S, -p.crouch * 0.3 * f);
+    this.turn(this.neck, S, (-p.crouch * 0.3 + (p.nod ?? 0)) * f);
   }
 }
 

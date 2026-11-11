@@ -17,6 +17,8 @@ export class Stage {
   view = { x: -30, z: 8, zoom: 34 };
   goal = { x: -30, z: 8, zoom: 34 };
   minZoom = 8;
+  /** Camera smoothing: smaller is snappier. Dialogue scenes use slow, deliberate moves. */
+  ease = 0.0015;
   maxZoom = 62;
   onTap: (x: number, y: number) => void = () => {};
   private pointers = new Map<number, { x: number; y: number; sx: number; sy: number; t: number }>();
@@ -197,7 +199,7 @@ export class Stage {
     g.x = Math.min(BOUNDS.maxX - half * 0.2, Math.max(BOUNDS.minX + half * 0.2, g.x));
     g.z = Math.min(BOUNDS.maxZ - half * 0.2, Math.max(BOUNDS.minZ + half * 0.2, g.z));
     g.zoom = Math.min(this.maxZoom, Math.max(this.minZoom, g.zoom));
-    const k = 1 - Math.pow(0.0015, dt);
+    const k = 1 - Math.pow(this.ease, dt);
     this.view.x += (g.x - this.view.x) * k;
     this.view.z += (g.z - this.view.z) * k;
     this.view.zoom += (g.zoom - this.view.zoom) * k;

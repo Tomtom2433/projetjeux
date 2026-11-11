@@ -15,7 +15,9 @@ import { Actors, type UiView } from './render/actors';
 import { Ui, type GameApi } from './ui/ui';
 import { audio } from './ui/audio';
 import { Tutorial } from './ui/tutorial';
-import { introScene, nightScene } from './sim/scenes';
+import { introScene, nightScene, type Scene } from './sim/scenes';
+import { Cine } from './ui/cine';
+import { portrait } from './ui/ui';
 import { coverMap } from './sim/cover';
 import '@fontsource/special-elite/latin-400.css';
 import '@fontsource/saira-stencil-one/latin-400.css';
@@ -115,7 +117,7 @@ class Game implements GameApi {
       this.started = true;
       audio.unlock();
       this.sceneLock = true;
-      this.ui.playScene(intro, () => {
+      this.playScene(intro, () => {
         this.sceneLock = false;
         this.begin();
       });
@@ -213,7 +215,7 @@ class Game implements GameApi {
     if (this.s.phase === 'gameover') return this.newGame();
     if (night && this.s.phase === 'running') {
       this.sceneLock = true;
-      this.ui.playScene(night, () => {
+      this.playScene(night, () => {
         this.sceneLock = false;
         this.ui.open(this.s.awaiting !== null ? 'radio' : null);
         this.ui.tutorial.maybeStart();
@@ -221,6 +223,19 @@ class Game implements GameApi {
     }
   }
   private sceneLock = false;
+  private cine = new Cine(this.stage, () => this.actors, () => this.s, portrait);
+
+  /** Play a dialogue scene in the yard, then hand the game back. */
+  private playScene(scene: Scene, done: () => void) {
+    this.cancelOrder();
+    this.selected = null;
+    this.ui.open('scene');
+    this.cine.play(scene, () => {
+      this.ui.open(null);
+      this.stage.focus(-36, 12, window.innerWidth < window.innerHeight ? 56 : 30);
+      done();
+    });
+  }
 
   focus(x: number, z: number) {
     this.stage.focus(x, z);
@@ -356,8 +371,9 @@ class Game implements GameApi {
     this.uiView.chosen = this.chosen;
     this.uiView.orderType = this.orderType;
 
-    const dark = this.started ? darkness(s) : 0.25;
-    const storm = this.started ? stormLevel(s) : 0;
+    const mood = this.cine.mood();
+    const dark = mood ? mood.dark : this.started ? darkness(s) : 0.25;
+    const storm = mood ? mood.storm : this.started ? stormLevel(s) : 0;
     this.stage.update(dt);
     this.stage.setAtmosphere(dark, storm, this.t);
     this.city.setShelter(s.shelter);
@@ -366,6 +382,8 @@ class Game implements GameApi {
     this.actors.sync(s, this.uiView, dt, this.t);
     this.stage.render();
     this.ui.frame(dt, this.t);
+    this.cine.frame(dt);
+    if (mood) document.getElementById('rain')!.style.opacity = String(mood.storm * 0.9);
   }
 }
 

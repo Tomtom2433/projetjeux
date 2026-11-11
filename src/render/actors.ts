@@ -150,6 +150,7 @@ interface SurvivorView {
   walk: number;
   hit: number;
   fall: number;
+  sit: number;
   phase: number;
 }
 
@@ -158,8 +159,66 @@ const hash = (n: number) => {
   return x - Math.floor(x);
 };
 
+/** Where a character stands and what they do while a dialogue scene plays. */
+export interface CineMark {
+  x: number;
+  z: number;
+  /** Heading once in place. */
+  face: number;
+  sit: boolean;
+  gesture: 'talk' | 'point' | 'shrug' | 'nod' | 'none';
+}
+const EXTRA_GEO: Record<string, number> = { ines: 0, patient: 1, sacha: 2, vogel: 4, stranger: 5 };
+
 export class Actors {
   root = new THREE.Group();
+  /** Set while a dialogue scene plays: characters go to their marks and act instead of following the simulation. */
+  private cine: Record<string, CineMark> | null = null;
+  private extras = new Map<string, { mesh: THREE.Mesh; x: number; z: number; heading: number }>();
+
+  setCine(marks: Record<string, CineMark> | null) {
+    this.cine = marks;
+    for (const [id, e] of this.extras) e.mesh.visible = !!marks?.[id];
+    if (!marks) return;
+    for (const id of Object.keys(marks)) {
+      if (this.views.has(id) || this.extras.has(id) || EXTRA_GEO[id] === undefined) continue;
+      const mesh = new THREE.Mesh(this.npcGeos[EXTRA_GEO[id]], new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9 }));
+      mesh.castShadow = true;
+      this.root.add(mesh);
+      this.extras.set(id, { mesh, x: marks[id].x - 5, z: marks[id].z + 4, heading: 0 });
+    }
+  }
+
+  /** Where a character's head is right now, for speech bubbles. */
+  headPos(id: string): { x: number; y: number; z: number } | null {
+    const v = this.views.get(id);
+    if (v) return { x: v.x, y: this.cine?.[id]?.sit ? 2.3 : 2.9, z: v.z };
+    const e = this.extras.get(id);
+    return e ? { x: e.x, y: this.cine?.[id]?.sit ? 2.0 : 2.7, z: e.z } : null;
+  }
+
+  private syncExtras(dt: number, t: number) {
+    if (!this.cine) return;
+    for (const [id, e] of this.extras) {
+      const m = this.cine[id];
+      if (!m) continue;
+      const dx = m.x - e.x;
+      const dz = m.z - e.z;
+      const dist = Math.hypot(dx, dz);
+      const step = Math.min(dist, 2.6 * dt);
+      if (dist > 0.05) {
+        e.x += (dx / dist) * step;
+        e.z += (dz / dist) * step;
+      }
+      let d = (dist > 0.1 ? Math.atan2(dx, dz) : m.face) - e.heading;
+      d = Math.atan2(Math.sin(d), Math.cos(d));
+      e.heading += d * Math.min(1, dt * 6);
+      const talk = m.gesture !== 'none';
+      e.mesh.position.set(e.x, dist > 0.1 ? Math.abs(Math.sin(t * 8)) * 0.1 : talk ? Math.abs(Math.sin(t * 5)) * 0.05 : 0, e.z);
+      e.mesh.rotation.set(talk ? Math.sin(t * 3.1) * 0.06 : 0, e.heading, 0, 'YXZ');
+      e.mesh.scale.set(1, m.sit ? 0.68 : 1, 1);
+    }
+  }
   private views = new Map<string, SurvivorView>();
   private infected!: THREE.InstancedMesh;
   private hordeLegs!: THREE.InstancedMesh;
@@ -305,7 +364,7 @@ export class Actors {
     tag.style.setProperty('--c', sv.color);
     this.labels.appendChild(tag);
     const p = survivorPos(sv);
-    this.views.set(sv.id, { group, body, mat, limbs, size, ring, crate, followers, tag, x: p.x, z: p.z, heading: 0, walk: 0, hit: 0, fall: 0, phase: this.views.size * 2.1 });
+    this.views.set(sv.id, { group, body, mat, limbs, size, ring, crate, followers, tag, x: p.x, z: p.z, heading: 0, walk: 0, hit: 0, fall: 0, sit: 0, phase: this.views.size * 2.1 });
     const view = this.views.get(sv.id)!;
     void loadRig(sv.id, 2.3, shadows).then((rig) => {
       if (!rig || this.views.get(sv.id) !== view) return;
@@ -450,12 +509,20 @@ export class Actors {
       const slot = !p.moving ? (atNode[p.node] = (atNode[p.node] ?? 0) + 1) - 1 : 0;
       const ox = !p.moving ? Math.cos(slot * 2.1 + 0.6) * (slot ? 3.4 : 0) : 0;
       const oz = !p.moving ? Math.sin(slot * 2.1 + 0.6) * (slot ? 3.4 : 0) : 0;
-      const tx = p.x + ox;
-      const tz = p.z + oz;
+      const cm = this.cine?.[sv.id];
+      const tx = cm ? cm.x : p.x + ox;
+      const tz = cm ? cm.z : p.z + oz;
       const dx = tx - v.x;
       const dz = tz - v.z;
       const dist = Math.hypot(dx, dz);
-      if (dist > 30) {
+      if (cm && dist < 14) {
+        // on stage they walk to their mark at a human pace
+        const step = Math.min(dist, 2.6 * dt);
+        if (dist > 0.02) {
+          v.x += (dx / dist) * step;
+          v.z += (dz / dist) * step;
+        }
+      } else if (dist > 30 || cm) {
         v.x = tx;
         v.z = tz;
       } else {
@@ -463,7 +530,7 @@ export class Actors {
         v.x += dx * k;
         v.z += dz * k;
       }
-      const moving = dist > 0.08 && sv.linked;
+      const moving = dist > 0.08 && (sv.linked || !!cm);
       if (moving) {
         // turn toward the direction of travel instead of snapping
         let d = Math.atan2(dx, dz) - v.heading;
@@ -471,18 +538,18 @@ export class Actors {
         v.heading += d * Math.min(1, dt * 9);
       }
       v.walk += dt * (moving ? (sv.mode === 'flee' ? 13 : 8.5) : 0);
-      const inside = NODE[p.node].kind === 'interior' && !p.moving && dist < 1.5;
+      const inside = !cm && NODE[p.node].kind === 'interior' && !p.moving && dist < 1.5;
       if (inside) (occupied[p.node] ??= []).push(sv.short);
       v.group.visible = !inside;
       v.group.position.set(v.x, 0, v.z);
-      const down = sv.mode === 'down';
+      const down = sv.mode === 'down' && !cm;
       const carried = down && !!sv.carriedBy;
-      const working = sv.mode === 'order' && sv.order?.stage === 'work' && !sv.to;
+      const working = !cm && sv.mode === 'order' && sv.order?.stage === 'work' && !sv.to;
       const observing = working && sv.order?.type === 'scout';
       const searching = working && sv.order?.type !== 'scout';
-      const fighting = sv.mode === 'fight' && sv.linked;
-      const resting = sv.mode === 'rest';
-      const crouch = sv.mode === 'hide' || (sv.mode === 'order' && sv.order?.type === 'hold' && !sv.to);
+      const fighting = !cm && sv.mode === 'fight' && sv.linked;
+      const resting = !cm && sv.mode === 'rest';
+      const crouch = cm ? cm.sit && !moving : sv.mode === 'hide' || (sv.mode === 'order' && sv.order?.type === 'hold' && !sv.to);
       if (observing) v.heading += dt * 1.1; // sweeping the street
       if (carried) {
         const c = this.views.get(sv.carriedBy!);
@@ -492,16 +559,21 @@ export class Actors {
       // falling and getting up are eased; a hit makes the body recoil
       v.fall += ((down ? 1 : 0) - v.fall) * Math.min(1, dt * (down ? 5 : 3));
       const idle = !moving && !down && !fighting && !searching;
-      if (idle && !observing && !carried) v.heading += Math.sin(t * 0.45 + v.phase) * dt * 0.25; // looking around
+      if (cm && !moving) {
+        let d = cm.face - v.heading;
+        d = Math.atan2(Math.sin(d), Math.cos(d));
+        v.heading += d * Math.min(1, dt * 5);
+      } else if (idle && !observing && !carried) v.heading += Math.sin(t * 0.45 + v.phase) * dt * 0.25; // looking around
       v.body.rotation.set(
         -1.45 * v.fall + (down ? 0 : searching ? 0.55 + Math.sin(t * 6) * 0.12 : fighting ? 0.2 + lunge * 0.3 : moving ? 0.12 : 0) - v.hit * 0.4,
         v.heading,
         moving ? Math.sin(v.walk) * 0.07 : fighting ? Math.sin(t * 9) * 0.12 : 0,
         'YXZ',
       );
-      v.body.position.set(Math.sin(v.heading) * (lunge * 0.35 - v.hit * 0.3), carried ? 2.25 : 0.35 * v.fall + (moving ? Math.abs(Math.sin(v.walk)) * 0.14 : 0), Math.cos(v.heading) * (lunge * 0.35 - v.hit * 0.3));
+      v.body.position.set(Math.sin(v.heading) * (lunge * 0.35 - v.hit * 0.3), carried ? 2.25 : 0.35 * v.fall + (moving ? Math.abs(Math.sin(v.walk)) * 0.14 : 0) - (cm && crouch && v.rig ? 0.5 * v.sit : 0), Math.cos(v.heading) * (lunge * 0.35 - v.hit * 0.3));
       const breath = idle ? 1 + Math.sin(t * 2.1 + v.phase) * 0.014 : 1;
-      v.body.scale.set(v.size, v.size * breath * (crouch ? 0.7 : resting ? 0.62 : searching ? 0.86 : 1), v.size);
+      v.sit += ((crouch ? 1 : 0) - v.sit) * Math.min(1, dt * 4);
+      v.body.scale.set(v.size, v.size * breath * (cm && v.rig ? 1 : crouch ? 0.7 : resting ? 0.62 : searching ? 0.86 : 1), v.size);
       // limbs: stride, reach, guard
       const stride = moving ? Math.sin(v.walk) * (sv.mode === 'flee' ? 0.95 : 0.65) : 0;
       const carrying = stockTotal(sv.carrying) > 0 || !!(sv.helping && s.survivors.some((o) => o.carriedBy === sv.id));
@@ -519,7 +591,20 @@ export class Actors {
         aL = -1.1 + Math.sin(t * 7) * 0.35;
         aR = -1.1 - Math.sin(t * 7) * 0.35;
       } else if (observing) aL = aR = -2.2; // binoculars up
-      else if (crouch) aL = aR = -0.5;
+      else if (cm && !moving) {
+        // talking with the hands; pointing; an open-palmed shrug
+        const g = cm.gesture;
+        const w = Math.sin(t * 4.3 + v.phase);
+        if (g === 'talk') {
+          aR = -0.75 - w * 0.3;
+          aL = -0.25 + Math.sin(t * 2.9 + v.phase) * 0.15;
+        } else if (g === 'point') {
+          aR = -1.5 + w * 0.06;
+          aL = -0.1;
+        } else if (g === 'shrug') aL = aR = -0.6 - w * 0.08;
+        else if (g === 'nod') aL = aR = -0.2;
+        else aL = aR = crouch ? -0.9 : -0.05;
+      } else if (crouch) aL = aR = -0.5;
       L.armL.rotation.x += (aL - L.armL.rotation.x) * Math.min(1, dt * 14);
       L.armR.rotation.x += (aR - L.armR.rotation.x) * Math.min(1, dt * 14);
       L.armL.rotation.z = observing ? -0.5 : -0.08;
@@ -530,11 +615,12 @@ export class Actors {
           gait: !moving ? 0 : sv.mode === 'flee' ? 1 : 0.5,
           armL: -L.armL.rotation.x,
           armR: -L.armR.rotation.x,
-          crouch: crouch || resting ? 1 : searching ? 0.45 : 0,
-          spread: observing ? 0.5 : 0,
+          crouch: cm ? v.sit : crouch || resting ? 1 : searching ? 0.45 : 0,
+          spread: observing ? 0.5 : cm?.gesture === 'shrug' ? 0.35 : 0,
+          nod: cm && cm.gesture !== 'none' ? Math.sin(t * (cm.gesture === 'nod' ? 6 : 3.4) + v.phase) * (cm.gesture === 'nod' ? 0.22 : 0.08) : 0,
         });
       }
-      v.ring.visible = !carried;
+      v.ring.visible = !carried && !cm;
       const mat = v.mat;
       mat.opacity = sv.linked ? 1 : 0.38;
       v.hit = Math.max(0, v.hit - dt * 2.5);
@@ -550,14 +636,14 @@ export class Actors {
       // markers shrink as the camera closes in, so they never bury the character
       const near = Math.min(1, Math.max(0.5, stage.view.zoom / 26));
       v.ring.scale.setScalar(near * (1 + (ui.selected === sv.id ? Math.sin(t * 5) * 0.06 : 0)));
-      v.crate.visible = stockTotal(sv.carrying) > 0 && !down;
+      v.crate.visible = stockTotal(sv.carrying) > 0 && !down && !cm;
       v.crate.rotation.y = v.heading;
 
       // escorted civilians trail behind
       const flags = [sv.escort.ines, sv.escort.patient, sv.escort.sacha, sv.escort.sacha, sv.escort.vogel, sv.escort.stranger];
       let rank = 0;
       v.followers.forEach((f, i) => {
-        f.visible = flags[i] && !inside && sv.linked;
+        f.visible = flags[i] && !inside && sv.linked && !this.cine;
         if (!f.visible) return;
         // the patient leans on Inès; the child keeps close to her father
         const back = 1.5 + rank * 1.2;
@@ -571,7 +657,7 @@ export class Actors {
       // tag
       const sp = stage.project(v.x, inside ? 0 : 3.6, v.z);
       const tag = v.tag;
-      if (inside) tag.style.display = 'none';
+      if (inside || this.cine) tag.style.display = 'none';
       else {
         tag.style.display = '';
         tag.style.transform = `translate3d(${sp.x.toFixed(1)}px,${(sp.y - slot * 15).toFixed(1)}px,0) translate(-50%,-100%)`;
@@ -587,6 +673,7 @@ export class Actors {
         }
       }
     }
+    this.syncExtras(dt, t);
     const sel = ui.selected ? this.views.get(ui.selected) : null;
     this.selRing.visible = !!sel && sel.group.visible;
     if (sel) {

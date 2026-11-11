@@ -437,24 +437,43 @@ h4.sec { margin: 14px 0 6px; font-size: 9.5px; letter-spacing: 0.16em; text-tran
 @keyframes syncpop { 50% { transform: scale(1.5); color: #fff; } }
 .tag.sv em { font-style: normal; font-size: 9px; color: #9fb0d4; }
 
-/* dialogue scenes */
-.scenebox { width: min(760px, 100%); cursor: pointer; animation: none; }
-.scenebox .scene { animation: none; }
-.scenebox .scene { margin: 0; border-radius: 0; border: 0; border-bottom: 1px solid rgba(138, 90, 58, 0.7); aspect-ratio: 21 / 7; }
-.dialog { display: flex; flex-direction: column; gap: 6px; padding: 10px 14px !important; min-height: 128px; justify-content: flex-end; }
-.dialog .past { margin: 0; font-family: var(--type); font-size: 11.5px; line-height: 1.35; color: #8f96a3; }
-.dialog .past b { font-family: var(--stencil); font-weight: 400; text-transform: uppercase; letter-spacing: 0.05em; opacity: 0.8; margin-right: 4px; }
-.dialog .line { display: grid; grid-template-columns: 64px 1fr; gap: 12px; align-items: center; }
-.dialog .line .portrait { width: 64px; height: 64px; aspect-ratio: 1; }
-.dialog .line b { font-family: var(--stencil); font-weight: 400; text-transform: uppercase; letter-spacing: 0.08em; font-size: 13px; }
-.dialog .line p { margin: 3px 0 0; font-family: var(--type); font-size: 15px; line-height: 1.45; color: #efe6d2; }
-.actions .count { margin-right: auto; align-self: center; font-family: var(--type); color: var(--dim); font-size: 11px; }
+/* dialogue scenes, staged in the world */
+body.cine #labels, body.cine #edges { display: none; }
+#cine { position: fixed; inset: 0; z-index: 40; cursor: pointer; user-select: none; -webkit-user-select: none; }
+#cine::before, #cine::after { content: ''; position: absolute; left: 0; right: 0; height: 46px; background: #07080b; transition: height 0.7s ease; }
+#cine::before { top: 0; }
+#cine::after { bottom: 0; height: 58px; }
+.c-top { position: absolute; top: 0; left: 0; right: 0; height: 46px; z-index: 2; display: flex; align-items: center; gap: 12px; padding: 0 16px; }
+.c-top b { font-family: var(--stencil); font-weight: 400; text-transform: uppercase; letter-spacing: 0.1em; font-size: 13px; color: #efe6d2; }
+.c-top small { font-family: var(--type); font-size: 11px; color: #8f96a3; margin-left: auto; text-align: right; }
+.c-bottom { position: absolute; bottom: 0; left: 0; right: 0; height: 58px; z-index: 2; display: flex; align-items: center; gap: 8px; padding: 0 14px; }
+.c-count { margin-right: auto; font-family: var(--type); color: #8f96a3; font-size: 11px; }
+.c-card { position: absolute; inset: 0; z-index: 3; background: #07080b; display: none; overflow: hidden; }
+#cine.card .c-card { display: block; opacity: 1; transition: opacity 0.4s ease; }
+#cine.card.out .c-card { opacity: 0; }
+.c-art { position: absolute; inset: 0; background-size: cover; background-position: center 40%; animation: kenburns 3.2s ease-out both; filter: saturate(0.9) brightness(0.8); }
+@keyframes kenburns { from { transform: scale(1.14) translateY(-1.5%); } to { transform: scale(1.02); } }
+.c-cardtext { position: absolute; left: 0; right: 0; bottom: 0; padding: 60px 26px 30px; background: linear-gradient(transparent, rgba(7, 8, 11, 0.94) 62%); }
+.c-title { margin: 0; font-family: var(--stencil); font-weight: 400; text-transform: uppercase; letter-spacing: 0.12em; font-size: clamp(22px, 5vw, 40px); color: #efe6d2; animation: cardup 0.8s ease 0.25s both; }
+.c-place { margin: 6px 0 0; font-family: var(--type); font-size: 13px; color: #e0a15a; animation: cardup 0.8s ease 0.55s both; }
+@keyframes cardup { from { opacity: 0; transform: translateY(14px); } }
+.c-bubble { position: absolute; left: 0; top: 0; z-index: 1; width: max-content; max-width: min(430px, calc(100vw - 20px)); display: grid; grid-template-columns: 44px 1fr; gap: 10px; align-items: start;
+  padding: 10px 14px 11px 10px; background: rgba(239, 230, 210, 0.97); color: #1b1a17; border-radius: 12px; border: 2px solid var(--c, #efe6d2); box-shadow: 0 8px 26px rgba(0, 0, 0, 0.55); will-change: transform; }
+.c-bubble::after { content: ''; position: absolute; top: 100%; left: var(--tail, 50%); margin-left: -9px; border: 9px solid transparent; border-top: 12px solid var(--c, #efe6d2); border-bottom: 0; }
+.c-bubble .c-face { width: 44px; height: 44px; border-radius: 6px; overflow: hidden; border: 1px solid rgba(0, 0, 0, 0.35); }
+.c-bubble .c-face > * { width: 100%; height: 100%; display: block; }
+.c-name { display: block; font-family: var(--stencil); font-weight: 400; text-transform: uppercase; letter-spacing: 0.08em; font-size: 11.5px; color: #1b1a17; opacity: 0.75; }
+.c-name::before { content: ''; display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--c); margin-right: 6px; }
+.c-text { margin: 3px 0 0; font-family: var(--type); font-size: 14.5px; line-height: 1.42; }
+.c-text span, .c-narr span { visibility: hidden; }
+.c-narr { position: absolute; z-index: 1; left: 50%; bottom: 76px; transform: translateX(-50%); width: min(620px, calc(100vw - 28px)); margin: 0; padding: 10px 16px; text-align: center;
+  font-family: var(--type); font-style: italic; font-size: 14px; line-height: 1.45; color: #efe6d2; background: rgba(7, 8, 11, 0.72); border-left: 3px solid #e0a15a; border-right: 3px solid #e0a15a; }
 @media (max-height: 460px) {
-  .scenebox .scene { height: 84px; aspect-ratio: auto; }
-  .dialog { min-height: 96px; padding: 6px 12px !important; gap: 4px; }
-  .dialog .past { font-size: 10.5px; }
-  .dialog .line { grid-template-columns: 48px 1fr; gap: 9px; }
-  .dialog .line .portrait { width: 48px; height: 48px; }
-  .dialog .line p { font-size: 12.5px; line-height: 1.35; }
-  .scenebox .actions { padding: 6px 10px; }
+  #cine::before, .c-top { height: 34px; }
+  #cine::after, .c-bottom { height: 46px; }
+  .c-bubble { grid-template-columns: 34px 1fr; padding: 7px 11px 8px 8px; max-width: min(380px, calc(100vw - 20px)); }
+  .c-bubble .c-face { width: 34px; height: 34px; }
+  .c-text { font-size: 12.5px; line-height: 1.35; }
+  .c-narr { bottom: 54px; font-size: 12.5px; padding: 7px 12px; }
+  .c-bottom .btn { padding: 7px 12px; }
 }

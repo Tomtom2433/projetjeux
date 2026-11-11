@@ -272,6 +272,6 @@ describe('dialogue scenes', () => {
     expect(texts.size).toBeGreaterThan(5);
     s.survivors[1].alive = false; // without Jo, nobody speaks his lines
     s.day = 2;
-    expect(nightScene(s)!.lines.every((l) => l.who !== 'jo')).toBe(true);
+    expect(nightScene(s)!.lines.every((l) => l.who !== 'jo' && !l.acts?.jo)).toBe(true);
   });
 });

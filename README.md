@@ -63,8 +63,13 @@ Glisser pour déplacer la caméra, pincer ou molette pour zoomer, mini-carte pou
   (pointillés sur la carte). Sous couverture, on est moins repéré et on a moins peur ; chaque action couverte fait
   monter la Synchro de l'équipe, qui multiplie l'expérience et rapporte un bonus tous les trois points. Se faire
   repérer la remet à zéro.
-- **Scènes dialoguées** (`src/sim/scenes.ts`) : une scène d'introduction, puis une veillée entre chaque journée,
-  où les survivants se parlent ; les répliques changent selon qui est vivant et ce que vous avez décidé.
+- **Scènes dialoguées** (`src/sim/scenes.ts`, `src/ui/cine.ts`) : une scène d'introduction, puis une veillée
+  entre chaque journée, dont les répliques dépendent des survivants en vie et des décisions prises. Elles se
+  jouent dans le monde 3D, autour du brasero : carte d'ouverture illustrée, bandes cinéma, personnages qui
+  marchent jusqu'à leur place, s'accroupissent, se tournent le dos ou pointent du doigt, caméra qui se resserre
+  sur celui qui parle (plan serré, plan à deux, plan large), bulle au-dessus de sa tête avec texte progressif,
+  didascalies en légende, éclairage propre à la scène (crépuscule, nuit, orage). Un tap termine la réplique,
+  le suivant passe à la suite ; « Passer la scène » ou Échap l'interrompt.
 - **Personnages 3D réalistes** (`public/models`) : Mara, Jo et Lena sont des modèles texturés avec squelette,
   animés par le code (marche, course, accroupi, port). Le squelette est reconnu par sa forme, pas par ses noms.
 - **Abri** : antenne, infirmerie, générateur, réserve (2 niveaux chacun, visibles dans la cour).

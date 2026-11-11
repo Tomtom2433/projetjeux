@@ -9,7 +9,6 @@ import { LEVELS, PERKS, aptitude, levelProgress, perkOffer } from '../sim/perks'
 import { MODE_LABEL, NPCS, ORDER_COLOR, ORDER_LABEL, fmtClock, fmtTime, nodeName } from '../sim/text';
 import { storedTier, storeTier, type Tier } from '../render/quality';
 import { audio } from './audio';
-import type { Scene } from '../sim/scenes';
 import { synchro } from '../sim/cover';
 import { Tutorial } from './tutorial';
 
@@ -91,7 +90,7 @@ const PAINTED = new Set(['mara', 'jo', 'lena', 'ines', 'patient', 'sacha', 'voge
 const SKIN: Record<string, string> = { mara: '#c48d69', jo: '#d6ab8b', lena: '#e8c6aa', ines: '#b98562', patient: '#d9c2ae', sacha: '#cfa07e', vogel: '#d2b7a0' };
 
 /** Hand-drawn SVG busts. The face reacts to the survivor's state. */
-function portrait(id: string, color = '#3fe0c5', mood: Mood = {}): string {
+export function portrait(id: string, color = '#3fe0c5', mood: Mood = {}): string {
   const scan = `<g opacity=".13" stroke="#fff" stroke-width=".6">${Array.from({ length: 16 }, (_, i) => `<path d="M0 ${i * 6.4 + 2}h100"/>`).join('')}</g>`;
   if (id === 'unknown')
     return `<svg viewBox="0 0 100 100"><rect width="100" height="100" fill="#14121f"/><g fill="#3b3560">${Array.from({ length: 40 }, (_, i) => `<rect x="${(i * 37) % 100}" y="${(i * 53) % 100}" width="${8 + ((i * 7) % 20)}" height="2"/>`).join('')}</g><path d="M22 100c0-18 12-28 28-28s28 10 28 28z" fill="#2a2546"/><ellipse cx="50" cy="44" rx="15" ry="18" fill="#2a2546"/><text x="50" y="54" font-size="26" font-weight="800" text-anchor="middle" fill="#a78bfa" font-family="system-ui">?</text>${scan}</svg>`;
@@ -267,8 +266,6 @@ export class Ui {
       case 'voice': audio.setVoice(!audio.voice); this.render(); if (audio.voice) audio.speak('ECHO-7, ici Mara. Vous me recevez ?', 'mara'); break;
       case 'perf': this.showPerf = !this.showPerf; this.el.perf.hidden = !this.showPerf; this.render(); break;
       case 'skip': this.typed = 1e9; break;
-      case 'scene-next': this.sceneNext(); break;
-      case 'scene-skip': this.sceneNext(true); break;
       case 'fullscreen': document.documentElement.requestFullscreen?.().catch(() => {}); break;
     }
     this.timer = 0;
@@ -276,8 +273,8 @@ export class Ui {
 
   open(screen: Screen) {
     this.screen = screen;
-    this.el.overlay.hidden = screen === null;
-    this.el.hud.hidden = screen === 'title' || !this.g.started;
+    this.el.overlay.hidden = screen === null || screen === 'scene';
+    this.el.hud.hidden = screen === 'title' || screen === 'scene' || !this.g.started;
     this.cache.delete(this.el.overlay);
     this.render();
   }
@@ -311,42 +308,6 @@ export class Ui {
     this.cardTimer = window.setTimeout(() => (el.hidden = true), 6500);
   }
   private cardTimer = 0;
-
-  // ---------------------------------------------------------------- dialogue scenes
-  private scene: Scene | null = null;
-  private sceneAt = 0;
-  private sceneDone: (() => void) | null = null;
-
-  /** Play a dialogue between survivors, one line per tap, then call back. */
-  playScene(scene: Scene, done: () => void) {
-    this.scene = scene;
-    this.sceneAt = 0;
-    this.sceneDone = done;
-    this.open('scene');
-    this.speakScene();
-  }
-
-  private speakScene() {
-    const l = this.scene?.lines[this.sceneAt];
-    if (l) audio.speak(l.text, l.who, 1, true);
-  }
-
-  private sceneNext(skip = false) {
-    if (!this.scene) return;
-    this.sceneAt++;
-    if (skip || this.sceneAt >= this.scene.lines.length) {
-      const done = this.sceneDone;
-      this.scene = null;
-      this.sceneDone = null;
-      this.screen = null;
-      this.el.overlay.hidden = true;
-      done?.();
-      return;
-    }
-    audio.tick();
-    this.render();
-    this.speakScene();
-  }
 
   /** The team's Synchro chain changed. */
   onSync(value: number, found: string | null) {
@@ -664,25 +625,8 @@ export class Ui {
     let html = '';
     const head = (title: string, sub = '', closable = true) => `<header><h2>${title}</h2><small>${sub}</small>${closable ? '<button class="x" data-act="close">✕</button>' : ''}</header>`;
 
-    if (this.screen === 'scene' && this.scene) {
-      const sc = this.scene;
-      const who = (id: string) => {
-        const sv = s.survivors.find((v) => v.id === id);
-        if (sv) return { name: sv.short, color: sv.color };
-        const n = Object.values(NPCS).find((x) => x.id === id);
-        return { name: n?.name.split(' ')[0] ?? id, color: n?.color ?? '#e8dcc4' };
-      };
-      const cur = sc.lines[this.sceneAt];
-      const prev = sc.lines.slice(Math.max(0, this.sceneAt - 2), this.sceneAt);
-      const c = who(cur.who);
-      const last = this.sceneAt >= sc.lines.length - 1;
-      html = `<div class="sheet scenebox" data-act="scene-next">${head(sc.title, sc.place, false)}
-        <div class="scene" style="background-image:url(./art/s-${sc.art}.webp)"></div>
-        <div class="body dialog">
-          ${prev.map((l) => `<p class="past"><b style="color:${who(l.who).color}">${who(l.who).name}</b> ${esc(l.text)}</p>`).join('')}
-          <div class="line"><div class="portrait">${portrait(cur.who, c.color)}</div><div><b style="color:${c.color}">${c.name}</b><p>${esc(cur.text)}</p></div></div>
-        </div>
-        <div class="actions"><span class="count">${this.sceneAt + 1}/${sc.lines.length}</span><button class="btn ghost" data-act="scene-skip">Passer la scène</button><button class="btn primary" data-act="scene-next">${last ? 'Continuer' : 'Suivant'}</button></div></div>`;
+    if (this.screen === 'scene') {
+      html = ''; // the scene plays in the world, not in a window
     } else if (this.screen === 'title') {
       const tier = storedTier();
       html = `<div class="sheet"><div class="scene hero" style="background-image:url(./art/s-shelter.webp)"></div><div class="title">
