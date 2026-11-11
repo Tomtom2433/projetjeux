@@ -228,3 +228,50 @@ describe('training day', () => {
     expect(s.survivors.every((v) => v.health === 100)).toBe(true);
   });
 });
+
+import { coverer, synchro } from '../src/sim/cover';
+import { introScene, nightScene } from '../src/sim/scenes';
+
+describe('cover and synchro', () => {
+  it('a watcher covers a teammate, and acting under cover builds the chain', () => {
+    const s = newGame(11);
+    const ev: SimEvent[] = [];
+    resolveChoice(s, 'ok', ev);
+    for (const th of s.threats) th.at = 'east_s'; // keep the west bank quiet
+    issueOrder(s, 'lena', 'scout', 'cross_w', ev);
+    for (let i = 0; i < 400 && !s.flags.scouted_cross_w; i++) step(s, TICK, ev);
+    issueOrder(s, 'jo', 'retrieve', 'quay_s', ev);
+    let covered = false;
+    for (let i = 0; i < 1200 && s.delivered.supplies < 1; i++) {
+      step(s, TICK, ev);
+      const jo = s.survivors[1];
+      if (jo.at === 'quay_s' && !jo.to) covered = covered || coverer(s, jo)?.id === 'lena';
+    }
+    expect(covered).toBe(true);
+    expect((s.flags.syncBest as number) ?? 0).toBeGreaterThanOrEqual(1);
+    expect(synchro(s)).toBeGreaterThanOrEqual(0);
+    expect(ev.some((e) => e.type === 'sync' && e.value > 0)).toBe(true);
+  });
+});
+
+describe('dialogue scenes', () => {
+  it('has an intro and a scene for every night, shaped by choices', () => {
+    const s = newGame(3, true);
+    expect(introScene(s)!.lines.length).toBeGreaterThan(5);
+    const texts = new Set<string>();
+    for (let d = 0; d <= 4; d++) {
+      s.day = d;
+      for (const truth of ['truth', 'lied'] as const) {
+        s.persistent.joTruth = truth;
+        const sc = nightScene(s);
+        expect(sc).not.toBeNull();
+        expect(sc!.lines.length).toBeGreaterThanOrEqual(4);
+        texts.add(sc!.lines.map((l) => l.text).join('|'));
+      }
+    }
+    expect(texts.size).toBeGreaterThan(5);
+    s.survivors[1].alive = false; // without Jo, nobody speaks his lines
+    s.day = 2;
+    expect(nightScene(s)!.lines.every((l) => l.who !== 'jo')).toBe(true);
+  });
+});

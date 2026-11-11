@@ -85,7 +85,7 @@ const STEPS: Step[] = [
   },
   {
     say: 'Les pastilles sous chaque ordre, c’est ce que chacun sait faire. Jo fouille mieux que personne. Lena observe. Moi, je ramène les gens.',
-    todo: 'Attendez que Jo rentre avec les rations. Une couleur par ordre : cyan, ambre, bleu-gris, violet, rose.',
+    todo: 'Lena tient le carrefour : tant qu’elle regarde, Jo est <b>couvert</b> (pointillés bleus). Agir sous couverture fait monter la <b>Synchro</b>. Attendez son retour.',
     live: true,
     done: (g) => g.s.delivered.supplies >= 1,
   },

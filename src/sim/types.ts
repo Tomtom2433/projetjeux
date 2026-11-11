@@ -225,4 +225,5 @@ export type SimEvent =
   | { type: 'link'; survivor: string; linked: boolean }
   | { type: 'flare'; node: NodeId }
   | { type: 'order'; survivor: string; result: 'ack' | 'refused' | 'queued' }
+  | { type: 'sync'; value: number; survivor: string; by: string; found: string | null }
   | { type: 'phase' };

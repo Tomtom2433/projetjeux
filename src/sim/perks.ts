@@ -48,6 +48,8 @@ export const hasPerk = (sv: Survivor, id: string) => sv.perks.includes(id);
 
 export function gainXp(s: GameState, sv: Survivor, n: number) {
   if (!sv.alive) return;
+  // the team's Synchro chain multiplies what everyone learns
+  n = Math.round(n * (1 + Math.min(10, (s.flags.sync as number) ?? 0) * 0.1));
   sv.xp += n;
   s.flags['xp_' + sv.id] = ((s.flags['xp_' + sv.id] as number) ?? 0) + n;
 }

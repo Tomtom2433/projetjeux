@@ -11,6 +11,7 @@ import type { Stage } from './scene';
 import type { City } from './city';
 import { GROUND, makeDash } from './textures';
 import { loadRig, type RiggedFigure } from './rigged';
+import { coverer } from '../sim/cover';
 
 export interface UiView {
   selected: string | null;
@@ -168,6 +169,7 @@ export class Actors {
   private base = new THREE.Matrix4();
   private threatPosCache = new Map<number, { x: number; z: number }>();
   private rings: THREE.Mesh[] = [];
+  private coverLines!: THREE.LineSegments;
   private routeMesh: THREE.Mesh;
   private activeMesh: THREE.Mesh;
   private dash = makeDash();
@@ -220,6 +222,11 @@ export class Actors {
       scene.add(m);
       return m;
     };
+    this.coverLines = new THREE.LineSegments(new THREE.BufferGeometry(), new THREE.LineDashedMaterial({ color: ORDER_COLOR.hold, dashSize: 1.2, gapSize: 0.9, transparent: true, opacity: 0.75, depthTest: false, toneMapped: false }));
+    this.coverLines.renderOrder = 5;
+    this.coverLines.frustumCulled = false;
+    this.coverLines.visible = false;
+    scene.add(this.coverLines);
     this.routeMesh = ribbon(0x3fe0c5, 0.95);
     this.activeMesh = ribbon(0xb9a6ff, 0.5);
 
@@ -361,6 +368,21 @@ export class Actors {
     g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
     g.setIndex(idx);
     mesh.visible = true;
+  }
+
+  /** Thin lines from each watcher to the ground they cover. */
+  setCover(map: { from: NodeId; nodes: NodeId[] }[]) {
+    const pos: number[] = [];
+    for (const c of map)
+      for (const n of c.nodes) {
+        if (n === c.from) continue;
+        pos.push(NODE[c.from].x, 0.45, NODE[c.from].z, NODE[n].x, 0.45, NODE[n].z);
+      }
+    this.coverLines.geometry.dispose();
+    this.coverLines.geometry = new THREE.BufferGeometry();
+    this.coverLines.geometry.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    this.coverLines.computeLineDistances();
+    this.coverLines.visible = pos.length > 0;
   }
 
   setRoutes(ui: UiView) {
@@ -557,7 +579,8 @@ export class Actors {
         const cls = 'tag sv' + (ui.selected === sv.id ? ' sel' : '') + (!sv.linked ? ' lost' : '') + (sv.mode === 'flee' || sv.mode === 'down' || sv.mode === 'fight' ? ' danger' : '');
         if (tag.className !== cls) tag.className = cls;
         const oc = sv.linked && sv.mode === 'order' && sv.order ? ORDER_COLOR[sv.order.stage === 'return' ? 'retreat' : sv.order.type] : '';
-        const html = `<b>${sv.short}</b>${ui.selected === sv.id || sv.mode !== 'idle' || !sv.linked ? `<i${oc ? ` style="color:${oc}"` : ''}>${state}</i>` : ''}`;
+        const cov = sv.linked && sv.mode !== 'idle' && zoneOf(sv) !== 'shelter' ? coverer(s, sv) : null;
+        const html = `<b>${sv.short}</b>${ui.selected === sv.id || sv.mode !== 'idle' || !sv.linked ? `<i${oc ? ` style="color:${oc}"` : ''}>${state}</i>` : ''}${cov ? `<em>◈ couvert par ${cov.short}</em>` : ''}`;
         if (tag.dataset.h !== html) {
           tag.dataset.h = html;
           tag.innerHTML = html;

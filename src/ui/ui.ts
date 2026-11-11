@@ -9,9 +9,11 @@ import { LEVELS, PERKS, aptitude, levelProgress, perkOffer } from '../sim/perks'
 import { MODE_LABEL, NPCS, ORDER_COLOR, ORDER_LABEL, fmtClock, fmtTime, nodeName } from '../sim/text';
 import { storedTier, storeTier, type Tier } from '../render/quality';
 import { audio } from './audio';
+import type { Scene } from '../sim/scenes';
+import { synchro } from '../sim/cover';
 import { Tutorial } from './tutorial';
 
-export type Screen = 'title' | 'radio' | 'roster' | 'shelter' | 'debrief' | 'ending' | 'settings' | null;
+export type Screen = 'title' | 'radio' | 'roster' | 'shelter' | 'debrief' | 'ending' | 'settings' | 'scene' | null;
 
 export interface GameApi {
   s: GameState;
@@ -265,6 +267,8 @@ export class Ui {
       case 'voice': audio.setVoice(!audio.voice); this.render(); if (audio.voice) audio.speak('ECHO-7, ici Mara. Vous me recevez ?', 'mara'); break;
       case 'perf': this.showPerf = !this.showPerf; this.el.perf.hidden = !this.showPerf; this.render(); break;
       case 'skip': this.typed = 1e9; break;
+      case 'scene-next': this.sceneNext(); break;
+      case 'scene-skip': this.sceneNext(true); break;
       case 'fullscreen': document.documentElement.requestFullscreen?.().catch(() => {}); break;
     }
     this.timer = 0;
@@ -289,6 +293,7 @@ export class Ui {
     else audio.blip(msg.signal);
     audio.speak(msg.text, msg.from, msg.signal, msg.kind !== 'report');
     if (msg.art && !msg.choices && this.screen === null && this.g.started) this.eventCard(msg);
+    if (this.screen === 'scene') return; // the briefing waits until the survivors have finished talking
     if (msg.choices && !msg.chosen) this.open('radio');
     else if (this.screen === 'radio') this.render();
   }
@@ -306,6 +311,51 @@ export class Ui {
     this.cardTimer = window.setTimeout(() => (el.hidden = true), 6500);
   }
   private cardTimer = 0;
+
+  // ---------------------------------------------------------------- dialogue scenes
+  private scene: Scene | null = null;
+  private sceneAt = 0;
+  private sceneDone: (() => void) | null = null;
+
+  /** Play a dialogue between survivors, one line per tap, then call back. */
+  playScene(scene: Scene, done: () => void) {
+    this.scene = scene;
+    this.sceneAt = 0;
+    this.sceneDone = done;
+    this.open('scene');
+    this.speakScene();
+  }
+
+  private speakScene() {
+    const l = this.scene?.lines[this.sceneAt];
+    if (l) audio.speak(l.text, l.who, 1, true);
+  }
+
+  private sceneNext(skip = false) {
+    if (!this.scene) return;
+    this.sceneAt++;
+    if (skip || this.sceneAt >= this.scene.lines.length) {
+      const done = this.sceneDone;
+      this.scene = null;
+      this.sceneDone = null;
+      this.screen = null;
+      this.el.overlay.hidden = true;
+      done?.();
+      return;
+    }
+    audio.tick();
+    this.render();
+    this.speakScene();
+  }
+
+  /** The team's Synchro chain changed. */
+  onSync(value: number, found: string | null) {
+    this.syncFlash = this.now + 1.2;
+    if (value === 0) this.toast('Synchro rompue : quelqu’un a été repéré', 'bad');
+    else if (found) this.toast(`<b>Synchro ×${value}</b> · trouvaille : ${found}`, 'ok', ORDER_COLOR.hold);
+    this.timer = 0;
+  }
+  private syncFlash = 0;
 
   toast(text: string, kind: 'ok' | 'bad' | 'wait' = 'ok', color = 'var(--teal)') {
     const d = document.createElement('div');
@@ -397,6 +447,7 @@ export class Ui {
       `<div class="sig">${bars(sig)}</div>
        <div class="sig"><small>${sel ? 'Signal ' + sel.short : 'Réseau'}${stormLevel(s) > 0.3 ? ' · orage' : ''}</small><b>${sel && !sel.linked ? 'PERDU' : Math.round(sig * 100) + ' %'}</b></div>
        <div class="clock"><small>${dayName(s.day)} · ${fmtClock(s.time)}</small><b>${left > 0 ? 'Nuit dans ' + fmtTime(left) : 'Nuit'}</b><div class="timebar"><i style="width:${Math.min(100, (s.time / s.duration) * 100).toFixed(1)}%"></i></div></div>
+       ${synchro(s) > 0 || this.syncFlash > this.now ? `<div class="sync ${this.syncFlash > this.now ? 'pop' : ''}"><small>Synchro</small><b>×${synchro(s)}</b></div>` : ''}
        <div class="obj-line ${obj.done ? 'done' : ''}">Objectif<br><b>${obj.label}</b>${obj.detail ? ' — ' + obj.detail : ''}</div>`,
     );
     const end = canEndDay(s) && s.time > 20;
@@ -613,7 +664,26 @@ export class Ui {
     let html = '';
     const head = (title: string, sub = '', closable = true) => `<header><h2>${title}</h2><small>${sub}</small>${closable ? '<button class="x" data-act="close">✕</button>' : ''}</header>`;
 
-    if (this.screen === 'title') {
+    if (this.screen === 'scene' && this.scene) {
+      const sc = this.scene;
+      const who = (id: string) => {
+        const sv = s.survivors.find((v) => v.id === id);
+        if (sv) return { name: sv.short, color: sv.color };
+        const n = Object.values(NPCS).find((x) => x.id === id);
+        return { name: n?.name.split(' ')[0] ?? id, color: n?.color ?? '#e8dcc4' };
+      };
+      const cur = sc.lines[this.sceneAt];
+      const prev = sc.lines.slice(Math.max(0, this.sceneAt - 2), this.sceneAt);
+      const c = who(cur.who);
+      const last = this.sceneAt >= sc.lines.length - 1;
+      html = `<div class="sheet scenebox" data-act="scene-next">${head(sc.title, sc.place, false)}
+        <div class="scene" style="background-image:url(./art/s-${sc.art}.webp)"></div>
+        <div class="body dialog">
+          ${prev.map((l) => `<p class="past"><b style="color:${who(l.who).color}">${who(l.who).name}</b> ${esc(l.text)}</p>`).join('')}
+          <div class="line"><div class="portrait">${portrait(cur.who, c.color)}</div><div><b style="color:${c.color}">${c.name}</b><p>${esc(cur.text)}</p></div></div>
+        </div>
+        <div class="actions"><span class="count">${this.sceneAt + 1}/${sc.lines.length}</span><button class="btn ghost" data-act="scene-skip">Passer la scène</button><button class="btn primary" data-act="scene-next">${last ? 'Continuer' : 'Suivant'}</button></div></div>`;
+    } else if (this.screen === 'title') {
       const tier = storedTier();
       html = `<div class="sheet"><div class="scene hero" style="background-image:url(./art/s-shelter.webp)"></div><div class="title">
         <h1>LAST <span>SIGNAL</span></h1>

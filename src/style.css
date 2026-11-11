@@ -428,3 +428,33 @@ h4.sec { margin: 14px 0 6px; font-size: 9.5px; letter-spacing: 0.16em; text-tran
   .radio .msg { font-size: 13px; }
   .paper { padding: 16px 22px 14px !important; }
 }
+
+/* Synchro chain */
+.sync { padding: 2px 8px; border-left: 3px solid #9fb0d4; text-align: center; }
+.sync small { display: block; font-family: var(--stencil); font-size: 9px; letter-spacing: 0.12em; color: #9fb0d4; text-transform: uppercase; }
+.sync b { font-family: var(--type); font-size: 16px; color: #dbe4f5; }
+.sync.pop b { animation: syncpop 0.5s ease 2; }
+@keyframes syncpop { 50% { transform: scale(1.5); color: #fff; } }
+.tag.sv em { font-style: normal; font-size: 9px; color: #9fb0d4; }
+
+/* dialogue scenes */
+.scenebox { width: min(760px, 100%); cursor: pointer; animation: none; }
+.scenebox .scene { animation: none; }
+.scenebox .scene { margin: 0; border-radius: 0; border: 0; border-bottom: 1px solid rgba(138, 90, 58, 0.7); aspect-ratio: 21 / 7; }
+.dialog { display: flex; flex-direction: column; gap: 6px; padding: 10px 14px !important; min-height: 128px; justify-content: flex-end; }
+.dialog .past { margin: 0; font-family: var(--type); font-size: 11.5px; line-height: 1.35; color: #8f96a3; }
+.dialog .past b { font-family: var(--stencil); font-weight: 400; text-transform: uppercase; letter-spacing: 0.05em; opacity: 0.8; margin-right: 4px; }
+.dialog .line { display: grid; grid-template-columns: 64px 1fr; gap: 12px; align-items: center; }
+.dialog .line .portrait { width: 64px; height: 64px; aspect-ratio: 1; }
+.dialog .line b { font-family: var(--stencil); font-weight: 400; text-transform: uppercase; letter-spacing: 0.08em; font-size: 13px; }
+.dialog .line p { margin: 3px 0 0; font-family: var(--type); font-size: 15px; line-height: 1.45; color: #efe6d2; }
+.actions .count { margin-right: auto; align-self: center; font-family: var(--type); color: var(--dim); font-size: 11px; }
+@media (max-height: 460px) {
+  .scenebox .scene { height: 84px; aspect-ratio: auto; }
+  .dialog { min-height: 96px; padding: 6px 12px !important; gap: 4px; }
+  .dialog .past { font-size: 10.5px; }
+  .dialog .line { grid-template-columns: 48px 1fr; gap: 9px; }
+  .dialog .line .portrait { width: 48px; height: 48px; }
+  .dialog .line p { font-size: 12.5px; line-height: 1.35; }
+  .scenebox .actions { padding: 6px 10px; }
+}

@@ -31,6 +31,7 @@ import { line, lootText, nodeName, recall } from './text';
 import { cryOut, protest, thank, tickBanter, welcome } from './banter';
 import { setupDay, storageCap } from './state';
 import { tickDirector } from './director';
+import { breakSynchro, coverCallouts, coverer, creditSynchro } from './cover';
 import { aptitude, gainXp, hasPerk, levelUp, practise } from './perks';
 import { ORDER_LABEL } from './text';
 import { LAST_DAY, buildEnding, mission, objective, objectiveStatus, type ObjectiveStatus } from './missions';
@@ -136,6 +137,9 @@ export function issueOrder(s: GameState, svId: string, type: OrderType, target: 
 
 // ---------------------------------------------------------------- movement
 
+/** Event sink for the current step, so movement can report Synchro gains. */
+let crossEv: SimEvent[] | null = null;
+
 function speedOf(s: GameState, sv: Survivor): number {
   let v = 1.55 * sv.speed * (1 - sv.fatigue / 260);
   if (stockTotal(sv.carrying) > 0) v *= 0.92;
@@ -174,6 +178,7 @@ function moveToward(s: GameState, sv: Survivor, goal: NodeId, dt: number, safe: 
     sv.at = sv.to!;
     sv.to = null;
     sv.progress = 0;
+    if (sv.mode === 'order' && sv.at !== 'shelter' && crossEv) creditSynchro(s, sv, 'cross_' + sv.at, crossEv);
   }
   return !sv.to && sv.at === goal;
 }
@@ -301,6 +306,7 @@ function runOrder(s: GameState, sv: Survivor, dt: number, ev: SimEvent[]) {
   if (o.type === 'scout') {
     perceive(s, sv, true);
     s.flags['scouted_' + target] = true;
+    creditSynchro(s, sv, 'scout_' + target, ev);
     gainXp(s, sv, 12);
     practise(s, sv, 'scout');
     if (hasPerk(sv, 'lynx')) for (const n of [target, ...neighbors(target)]) s.intel[n].lootKnown = true;
@@ -328,6 +334,7 @@ function runOrder(s: GameState, sv: Survivor, dt: number, ev: SimEvent[]) {
         got.supplies++;
         sv.carrying.supplies++;
       }
+      creditSynchro(s, sv, 'search_' + target, ev);
       gainXp(s, sv, Math.min(20, stockTotal(got) * 6));
       practise(s, sv, 'retrieve');
       say(s, ev, sv, line(s, sv, 'search_found', { loot: lootText(got) }));
@@ -351,6 +358,7 @@ function pickUp(s: GameState, sv: Survivor, ally: Survivor, ev: SimEvent[]) {
   ally.carriedBy = sv.id;
   ally.health = Math.max(ally.health, (hasPerk(sv, 'surehands') ? 35 : sv.medic ? 15 : 5) + aptitude(sv, 'rescue') * 4);
   practise(s, sv, 'rescue');
+  creditSynchro(s, sv, 'pickup_' + ally.id, ev);
   gainXp(s, sv, 20);
   ally.bleed = 9999;
   sv.helping = ally.id;
@@ -446,6 +454,7 @@ function encounter(s: GameState, sv: Survivor, prox: Proximity, ev: SimEvent[]) 
       if (!sv.to && (sv.mode === 'hide' || (sv.mode === 'order' && sv.order?.type === 'hold'))) p *= 0.3;
       if (sv.tactic === 'stealth' && node.kind === 'bridge') p *= 0.3;
       if (hasPerk(sv, 'shadow')) p *= 0.7;
+      if (coverer(s, sv)) p *= 0.55;
       if (s.time < ((s.flags.rainUntil as number) ?? -1)) p *= 0.75;
       if (sv.mode === 'order' && sv.order?.type === 'scout') p *= 1.02 - aptitude(sv, 'scout') * 0.11;
       if (sv.mode === 'order' && sv.order?.type === 'hold') p *= 1.3 - aptitude(sv, 'hold') * 0.12;
@@ -456,6 +465,7 @@ function encounter(s: GameState, sv: Survivor, prox: Proximity, ev: SimEvent[]) 
         th.state = 'hunt';
         th.target = sv.id;
         th.timer = 0;
+        breakSynchro(s, ev);
         sv.fear = clamp(sv.fear + 24 * (1 - sv.courage / 200) * (hasPerk(sv, 'calm') ? 0.7 : 1));
         say(s, ev, sv, line(s, sv, 'spotted', { node: node.name }), 'alert');
       }
@@ -754,6 +764,7 @@ function vitals(s: GameState, sv: Survivor, dt: number, prox: Proximity) {
     if (s.survivors.some((o) => o !== sv && o.alive && o.mode !== 'down' && zoneOf(o) === zoneOf(sv))) df -= 0.3;
   }
   if (df > 0 && hasPerk(sv, 'calm')) df *= 0.7;
+  if (df > 0 && coverer(s, sv)) df *= 0.5;
   if (df < 0 && hasPerk(sv, 'steady')) df *= 2;
   sv.fear = clamp(sv.fear + df * dt);
   if (sv.mode === 'rest' && sv.fatigue < 55) setMode(s, sv, sv.order ? 'order' : 'home');
@@ -790,6 +801,7 @@ function updateLink(s: GameState, sv: Survivor, ev: SimEvent[]) {
 
 export function step(s: GameState, dt: number, ev: SimEvent[]) {
   if (s.phase !== 'running' || s.awaiting !== null) return;
+  crossEv = ev;
   const prevSecond = Math.floor(s.time);
   s.time += dt;
   const second = Math.floor(s.time) !== prevSecond;
@@ -815,6 +827,7 @@ export function step(s: GameState, dt: number, ev: SimEvent[]) {
   if (second) {
     for (const th of s.threats) th.seen = false;
     tickBanter(s, ev);
+    coverCallouts(s, ev);
     if (s.day > 0) tickDirector(s, ev);
     if (s.awaiting !== null) return;
   }
@@ -1017,6 +1030,7 @@ function buildDebrief(s: GameState, notes: string[], obj: ObjectiveStatus, title
   if (h.choice === 'meds') c.push('Inès Duval est restée à Saint-Roch. Elle sait que vous avez choisi.');
   if (s.flags.unknownOutcome === 'rescued') c.push('Le signal des Tanneurs était vrai. Sacha a apporté une pièce de générateur.');
   if (s.flags.unknownOutcome === 'lure') c.push('Le signal des Tanneurs était un leurre posé par quelqu’un.');
+  if (((s.flags.syncBest as number) ?? 0) >= 3) c.push(`Synchro ×${s.flags.syncBest} : ceux qui avançaient l’ont fait sous le regard d’un autre. Ça se sent dans l’équipe.`);
   if (s.flags.overflow) c.push('La réserve était pleine : une partie du butin est restée dans la cour, sous la pluie.');
   for (const sv of s.survivors) {
     if (!sv.alive) continue;

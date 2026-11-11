@@ -59,6 +59,14 @@ Glisser pour déplacer la caméra, pincer ou molette pour zoomer, mini-carte pou
 - **Aptitudes** : chaque survivant est noté de 1 à 5 par type d'ordre (Lena en reconnaissance, Jo en
   récupération, Mara en secours). L'aptitude joue sur la vitesse, la discrétion, l'acceptation de l'ordre, et
   monte avec la pratique.
+- **Couverture et Synchro** (`src/sim/cover.ts`) : un survivant qui tient un point couvre ses voisins
+  (pointillés sur la carte). Sous couverture, on est moins repéré et on a moins peur ; chaque action couverte fait
+  monter la Synchro de l'équipe, qui multiplie l'expérience et rapporte un bonus tous les trois points. Se faire
+  repérer la remet à zéro.
+- **Scènes dialoguées** (`src/sim/scenes.ts`) : une scène d'introduction, puis une veillée entre chaque journée,
+  où les survivants se parlent ; les répliques changent selon qui est vivant et ce que vous avez décidé.
+- **Personnages 3D réalistes** (`public/models`) : Mara, Jo et Lena sont des modèles texturés avec squelette,
+  animés par le code (marche, course, accroupi, port). Le squelette est reconnu par sa forme, pas par ses noms.
 - **Abri** : antenne, infirmerie, générateur, réserve (2 niveaux chacun, visibles dans la cour).
 - **Débrief** : pertes, secourus, butin, conséquences, signaux non résolus.
 - **Sauvegarde locale** automatique (`localStorage`), simulation déterministe par graine.
@@ -83,7 +91,7 @@ appareil réel.
 
 ## Limites connues
 
-- Les visuels sont 100 % procéduraux (aucun pack d'assets) : la direction artistique « haute fidélité PBR »
+- La ville est procédurale (aucun pack d'assets) : la direction artistique « haute fidélité PBR »
   du brief demande les packs listés et un moteur natif ; cette tranche valide la boucle de jeu, la caméra,
   la lisibilité et le budget mobile.
 - Le comparatif Unity URP / Unreal n'a pas été fait ici. `src/sim` ne dépend d'aucun moteur et se porte tel quel.

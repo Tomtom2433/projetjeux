@@ -15,6 +15,8 @@ import { Actors, type UiView } from './render/actors';
 import { Ui, type GameApi } from './ui/ui';
 import { audio } from './ui/audio';
 import { Tutorial } from './ui/tutorial';
+import { introScene, nightScene } from './sim/scenes';
+import { coverMap } from './sim/cover';
 import '@fontsource/special-elite/latin-400.css';
 import '@fontsource/saira-stencil-one/latin-400.css';
 
@@ -107,7 +109,17 @@ class Game implements GameApi {
     clearSave();
     // first-time players start with the guided training day
     this.rebuild(newGame(undefined, !Tutorial.seen()));
-    this.begin();
+    // a first game opens on the three of them talking, before the operator ever speaks
+    const intro = this.s.day === 0 ? introScene(this.s) : null;
+    if (intro) {
+      this.started = true;
+      audio.unlock();
+      this.sceneLock = true;
+      this.ui.playScene(intro, () => {
+        this.sceneLock = false;
+        this.begin();
+      });
+    } else this.begin();
   }
 
   /** Leave the training and go straight to day 1. */
@@ -192,12 +204,23 @@ class Game implements GameApi {
   }
 
   nextDay() {
+    // what they say to each other that night depends on the day that just ended
+    const night = nightScene(this.s);
     nextDay(this.s, this.ev);
     this.cancelOrder();
     this.selected = null;
     this.save();
-    if (this.s.phase === 'gameover') this.newGame();
+    if (this.s.phase === 'gameover') return this.newGame();
+    if (night && this.s.phase === 'running') {
+      this.sceneLock = true;
+      this.ui.playScene(night, () => {
+        this.sceneLock = false;
+        this.ui.open(this.s.awaiting !== null ? 'radio' : null);
+        this.ui.tutorial.maybeStart();
+      });
+    }
   }
+  private sceneLock = false;
 
   focus(x: number, z: number) {
     this.stage.focus(x, z);
@@ -251,6 +274,8 @@ class Game implements GameApi {
       } else if (e.type === 'order') {
         const sv = survivor(this.s, e.survivor);
         if (sv) this.ui.orderFeedback(sv, e.result);
+      } else if (e.type === 'sync') {
+        this.ui.onSync(e.value, e.found);
       } else if (e.type === 'hit') {
         this.actors.onHit(e.survivor);
         if (e.survivor === this.selected) this.stage.shake(0.5);
@@ -264,7 +289,7 @@ class Game implements GameApi {
         this.save();
         if (this.s.phase === 'debrief') this.ui.open('debrief');
         else if (this.s.phase === 'ending') this.ui.open('ending');
-        else if (this.s.phase === 'running') {
+        else if (this.s.phase === 'running' && !this.sceneLock) {
           this.ui.open(this.s.awaiting !== null ? 'radio' : null);
           if (this.s.day > 0) Tutorial.markSeen();
           this.ui.tutorial.maybeStart();
@@ -307,6 +332,7 @@ class Game implements GameApi {
     this.routeTimer -= dt;
     if (this.routeTimer <= 0) {
       this.routeTimer = 0.5;
+      this.actors.setCover(this.started ? coverMap(s) : []);
       const sv = this.selected ? survivor(s, this.selected) : null;
       let active: [number, number][] | null = null;
       if (sv && sv.alive && sv.linked && sv.mode === 'order' && sv.order && sv.order.type !== 'hold') {
