@@ -191,7 +191,7 @@ function applyHospital(s: GameState, sv: Survivor, choice: string, ev: SimEvent[
       s.persistent.patientLeft = true;
       s.unresolved.push('Saint-Roch : la radio laissée au patient émet encore, par intermittence.');
       shiftTrust(sv, Math.round(-5 * compassion));
-      remember(s, sv, 'A laissé un homme blessé à Saint-Roch. Ordre de l’opérateur.', -0.6);
+      remember(s, sv, 'A laissé un homme blessé à Saint-Roch. Ordre de l’opérateur.', -0.6, 'left', 'hosp_in');
       say(s, ev, sv, 'Inès vient avec nous. Lui… on lui laisse de l’eau et la radio. Il a compris.');
     } else {
       s.persistent.inesLeft = false;
@@ -205,7 +205,7 @@ function applyHospital(s: GameState, sv: Survivor, choice: string, ev: SimEvent[
     s.unresolved.push('Saint-Roch : Inès Duval appelle toujours sur le canal 4.');
     shiftTrust(sv, Math.round(-10 * Math.max(0.3, compassion)));
     sv.fear = clamp(sv.fear + 5);
-    remember(s, sv, 'A pris les médicaments et laissé les vivants. Ordre de l’opérateur.', -0.8);
+    remember(s, sv, 'A pris les médicaments et laissé les vivants. Ordre de l’opérateur.', -0.8, 'left', 'hosp_in');
     say(s, ev, sv, sv.id === 'jo' ? 'J’ai les médocs. Elle a refusé de bouger. Tant pis.' : 'J’ai le stock. Inès refuse de le quitter. Je… je sors.');
   }
   stock.medicine -= take;
@@ -257,7 +257,7 @@ function resolveUnknownSite(s: GameState, sv: Survivor, ev: SimEvent[]) {
     s.threats.push({ id: s.nextThreatId++, at: 'apts', to: null, progress: 0, size: 3, state: 'hunt', target: sv.id, goal: null, timer: 0, seen: true });
     sv.fear = clamp(sv.fear + 25);
     shiftTrust(sv, -8);
-    remember(s, sv, 'Le signal des Tanneurs était un piège. L’opérateur l’y avait envoyé·e.', -0.7);
+    remember(s, sv, 'Le signal des Tanneurs était un piège. L’opérateur l’y avait envoyé·e.', -0.7, 'lure', 'apts');
     say(s, ev, sv, 'C’est un magnétophone ! Sur une table ! Et ils sont dans la cage d’escalier— c’est un piège !', 'alert');
     s.unresolved.push('Tanneurs : quelqu’un a posé cet émetteur. On ne sait pas qui.');
   }

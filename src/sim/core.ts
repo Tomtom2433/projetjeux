@@ -107,8 +107,8 @@ export function systemMsg(s: GameState, ev: SimEvent[], text: string, kind: Radi
   pushRadio(s, ev, { from: 'echo', fromName: 'ECHO-7', text, kind, signal: 1 });
 }
 
-export function remember(s: GameState, sv: Survivor, text: string, tone: number) {
-  sv.memory.push({ day: s.day, time: s.time, text, tone });
+export function remember(s: GameState, sv: Survivor, text: string, tone: number, kind?: string, node?: NodeId) {
+  sv.memory.push({ day: s.day, time: s.time, text, tone, kind, node });
   if (sv.memory.length > 12) sv.memory.shift();
 }
 

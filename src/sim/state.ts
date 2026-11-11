@@ -89,7 +89,7 @@ export function newGame(seed = (Date.now() & 0x7fffffff) || 1): GameState {
         carryCap: 5,
         melee: true,
         relations: { mara: 45, lena: 55 },
-        memory: [{ day: 0, time: 0, text: 'Un opérateur précédent a envoyé son frère au checkpoint. Il n’est pas revenu.', tone: -0.7 }],
+        memory: [{ day: 0, time: 0, text: 'Un opérateur précédent a envoyé son frère au checkpoint. Il n’est pas revenu.', tone: -0.7, kind: 'brother', node: 'bridge_e' }],
       }),
       makeSurvivor({
         id: 'lena',
@@ -106,7 +106,7 @@ export function newGame(seed = (Date.now() & 0x7fffffff) || 1): GameState {
         noise: 0.7,
         carryCap: 2,
         relations: { mara: 72, jo: 55 },
-        memory: [{ day: 0, time: 0, text: 'Mara l’a trouvée dans une cave du quai nord. Elle n’en parle pas.', tone: -0.3 }],
+        memory: [{ day: 0, time: 0, text: 'Mara l’a trouvée dans une cave du quai nord. Elle n’en parle pas.', tone: -0.3, kind: 'cave', node: 'quay_n' }],
       }),
     ],
     threats: [],

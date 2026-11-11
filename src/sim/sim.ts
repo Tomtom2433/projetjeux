@@ -27,7 +27,8 @@ import {
   zoneOf,
 } from './core';
 import { onArrive, tickIncidents } from './incidents';
-import { line, lootText, nodeName } from './text';
+import { line, lootText, nodeName, recall } from './text';
+import { cryOut, protest, thank, tickBanter, welcome } from './banter';
 import { setupDay, storageCap } from './state';
 
 export const TICK = 0.25;
@@ -90,7 +91,7 @@ function deliverOrder(s: GameState, sv: Survivor, order: Order, ev: SimEvent[]) 
   if (obeyScore(s, sv, order) < 0.32) {
     say(s, ev, sv, line(s, sv, 'refuse', vars));
     shiftTrust(sv, -2);
-    remember(s, sv, `A refusé un ordre vers ${vars.node}.`, -0.2);
+    remember(s, sv, `A refusé un ordre vers ${vars.node}.`, -0.2, 'refused', order.target ?? undefined);
     ev.push({ type: 'order', survivor: sv.id, result: 'refused' });
     return;
   }
@@ -100,6 +101,12 @@ function deliverOrder(s: GameState, sv: Survivor, order: Order, ev: SimEvent[]) 
   setMode(s, sv, 'order');
   say(s, ev, sv, line(s, sv, 'ack_' + order.type, vars));
   ev.push({ type: 'order', survivor: sv.id, result: 'ack' });
+  if (order.target && order.type !== 'retreat') {
+    const path = findPath(s, zoneOf(sv), order.target, { safe: 1.2, sv, avoidBridge: sv.tactic === 'detour' }) ?? [order.target];
+    const memory = recall(s, sv, path.slice(1));
+    if (memory) say(s, ev, sv, memory);
+    protest(s, sv, path, ev);
+  }
 }
 
 export function issueOrder(s: GameState, svId: string, type: OrderType, target: NodeId | null, ev: SimEvent[]): { ok: boolean; reason?: string } {
@@ -215,6 +222,7 @@ function arriveHome(s: GameState, sv: Survivor, ev: SimEvent[]) {
       ally.relations[sv.id] = clamp((ally.relations[sv.id] ?? 50) + 20);
       remember(s, ally, `${sv.short} l’a ramené·e à ECHO-7 sur son dos.`, 0.8);
       remember(s, sv, `A ramené ${ally.short} vivant·e.`, 0.7);
+      thank(s, ally, sv, ev);
       people.push(ally.short);
     }
     sv.helping = null;
@@ -224,6 +232,7 @@ function arriveHome(s: GameState, sv: Survivor, ev: SimEvent[]) {
     const what = [brought ? lootText(dropped) : '', people.length ? people.join(', ') + ' en sécurité' : ''].filter(Boolean).join(' · ');
     say(s, ev, sv, line(s, sv, 'deposit', { loot: what }));
     ev.push({ type: 'deposit', survivor: sv.id });
+    welcome(s, sv, ev);
   } else if (sv.order || sv.mode === 'home' || sv.mode === 'flee') {
     say(s, ev, sv, line(s, sv, 'home'));
   }
@@ -342,6 +351,8 @@ function proximity(s: GameState, sv: Survivor): Proximity {
 
 function goDown(s: GameState, sv: Survivor, ev: SimEvent[]) {
   say(s, ev, sv, line(s, sv, 'down'), 'alert');
+  remember(s, sv, `Est tombé·e à ${NODE[zoneOf(sv)].name}.`, -0.7, 'hurt', zoneOf(sv));
+  cryOut(s, sv, ev);
   setMode(s, sv, 'down');
   sv.health = 0;
   sv.bleed = 110;
@@ -547,7 +558,7 @@ function decide(s: GameState, sv: Survivor, prox: Proximity, ev: SimEvent[]) {
       } else if (sv.order) {
         sv.order = null;
         shiftTrust(sv, -3);
-        remember(s, sv, `A abandonné sa mission près de ${NODE[here].name}.`, -0.3);
+        remember(s, sv, `A abandonné sa mission près de ${NODE[here].name}.`, -0.3, 'aborted', here);
         say(s, ev, sv, line(s, sv, 'abort', { node: NODE[here].name }));
         setMode(s, sv, atShelter ? 'idle' : 'hide');
         sv.safeFor = -9999; // stays put until told otherwise
@@ -749,7 +760,10 @@ export function step(s: GameState, dt: number, ev: SimEvent[]) {
   tickIncidents(s, ev);
   if (s.awaiting !== null) return;
 
-  if (second) for (const th of s.threats) th.seen = false;
+  if (second) {
+    for (const th of s.threats) th.seen = false;
+    tickBanter(s, ev);
+  }
 
   for (const sv of s.survivors) {
     if (!sv.alive) continue;

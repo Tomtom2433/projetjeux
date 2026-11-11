@@ -48,6 +48,9 @@ export interface MemoryEntry {
   text: string;
   /** Emotional weight, -1 (trauma) .. +1 (pride). */
   tone: number;
+  /** Category and place, so later dialogue can refer back to it. */
+  kind?: string;
+  node?: NodeId;
 }
 
 export interface Observation {
