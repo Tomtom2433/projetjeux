@@ -1,256 +1,41 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="fr">
-<head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Petit jeu 3D - DJ Block World</title>
-<style>
-html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #000; font-family: Arial, sans-serif; }
-canvas { display: block; }
-#hud { position: fixed; left: 16px; top: 16px; color: white; text-shadow: 0 0 8px black; user-select: none; pointer-events: none; }
-#hud h1 { margin: 0 0 8px 0; font-size: 24px; color: #7dd3fc; }
-#score { font-size: 20px; margin-bottom: 6px; }
-#message { font-size: 17px; color: #fbcfe8; max-width: 650px; }
-#help { position: fixed; right: 16px; bottom: 16px; color: #dbeafe; text-align: right; font-size: 14px; text-shadow: 0 0 8px black; white-space: pre; user-select: none; pointer-events: none; }
-</style>
-<script async src="https://cdn.jsdelivr.net/npm/es-module-shims@1.8.3/dist/es-module-shims.js"></script>
-<script type="importmap">
-{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js" } }
-</script>
-</head>
-<body>
-<div id="hud">
-  <h1>DJ BLOCK WORLD</h1>
-  <div id="score">Pièces : 0/0</div>
-  <div id="message">Chargement...</div>
-</div>
-<div id="help">Déplacement : ZQSD / WASD / Flèches
-Saut : Espace
-Recommencer : R
-
-Objectif :
-Ramasser toutes les pièces,
-puis aller sur la piste DJ.</div>
-
-<script type="module">
-import * as THREE from 'three';
-let scene, camera, renderer, player;
-const playerVelocity = new THREE.Vector3();
-let canJump = false;
-const obstacles = [];
-const coins = [];
-const djBoothPosition = new THREE.Vector3(0, 0, -32);
-let score = 0, allCoins = false, won = false;
-const keys = {};
-const clock = new THREE.Clock();
-const scoreEl = document.getElementById('score');
-const messageEl = document.getElementById('message');
-let audioCtx = null;
-
-init();
-
-function init() {
-  scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x8ec9ff);
-  scene.fog = new THREE.Fog(0x8ec9ff, 70, 150);
-  camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 500);
-  camera.position.set(0, 10, 42);
-  renderer = new THREE.WebGLRenderer({ antialias: true });
-  renderer.setSize(window.innerWidth, window.innerHeight);
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-  renderer.shadowMap.enabled = true;
-  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-  document.body.appendChild(renderer.domElement);
-
-  scene.add(new THREE.AmbientLight(0xffffff, 0.45));
-  scene.add(new THREE.HemisphereLight(0xffffff, 0x77aa77, 0.65));
-  const sun = new THREE.DirectionalLight(0xffffff, 1.7);
-  sun.position.set(30, 55, 25);
-  sun.castShadow = true;
-  sun.shadow.mapSize.set(2048, 2048);
-  sun.shadow.camera.left = -70; sun.shadow.camera.right = 70;
-  sun.shadow.camera.top = 70; sun.shadow.camera.bottom = -70;
-  scene.add(sun);
-
-  const ground = new THREE.Mesh(new THREE.PlaneGeometry(95, 95), new THREE.MeshStandardMaterial({ color: 0x57b84c, roughness: 0.95 }));
-  ground.rotation.x = -Math.PI / 2;
-  ground.receiveShadow = true;
-  scene.add(ground);
-
-  player = createPlayer();
-  player.position.set(0, 0, 26);
-  player.rotation.y = Math.PI;
-  scene.add(player);
-
-  createWorld(); createCoins(); createDJBooth();
-
-  window.addEventListener('resize', () => {
-    camera.aspect = window.innerWidth / window.innerHeight;
-    camera.updateProjectionMatrix();
-    renderer.setSize(window.innerWidth, window.innerHeight);
-  });
-  window.addEventListener('keydown', (e) => { initAudio(); if (e.code === 'Space') e.preventDefault(); if (e.code === 'KeyR') resetGame(); keys[e.code] = true; });
-  window.addEventListener('keyup', (e) => { keys[e.code] = false; });
-  window.addEventListener('pointerdown', initAudio);
-  animate();
-}
-
-function createPlayer() {
-  const group = new THREE.Group();
-  makeBox(group, 0.34, 0.75, 0.34, 0x24292f, -0.24, 0.375, 0);
-  makeBox(group, 0.34, 0.75, 0.34, 0x24292f, 0.24, 0.375, 0);
-  makeBox(group, 0.95, 0.85, 0.55, 0x2563eb, 0, 1.175, 0);
-  makeBox(group, 0.28, 0.75, 0.28, 0xfacc15, -0.68, 1.12, 0);
-  makeBox(group, 0.28, 0.75, 0.28, 0xfacc15, 0.68, 1.12, 0);
-  makeBox(group, 0.62, 0.62, 0.62, 0xfbbf24, 0, 1.95, 0);
-  makeBox(group, 0.08, 0.08, 0.02, 0x111111, -0.14, 2.0, 0.32);
-  makeBox(group, 0.08, 0.08, 0.02, 0x111111, 0.14, 2.0, 0.32);
-  return group;
-}
-
-function makeBox(parent, w, h, d, color, x, y, z) {
-  const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), new THREE.MeshStandardMaterial({ color, roughness: 0.7, metalness: 0.05 }));
-  mesh.position.set(x, y, z);
-  mesh.castShadow = true; mesh.receiveShadow = true;
-  parent.add(mesh);
-  return mesh;
-}
-
-function addObstacle(x, y, z, w, h, d, color) {
-  const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), new THREE.MeshStandardMaterial({ color, roughness: 0.65, metalness: 0.08 }));
-  mesh.position.set(x, y + h / 2, z);
-  mesh.castShadow = true; mesh.receiveShadow = true;
-  scene.add(mesh);
-  obstacles.push({ min: new THREE.Vector3(x - w / 2, y, z - d / 2), max: new THREE.Vector3(x + w / 2, y + h, z + d / 2) });
-}
-
-function createWorld() {
-  addObstacle(0, 0, -44, 90, 4, 2, 0x5b21b6);
-  addObstacle(0, 0, 44, 90, 4, 2, 0x5b21b6);
-  addObstacle(-44, 0, 0, 2, 4, 90, 0x5b21b6);
-  addObstacle(44, 0, 0, 2, 4, 90, 0x5b21b6);
-  addObstacle(-10, 0, -6, 4, 2.2, 4, 0xff5252);
-  addObstacle(10, 0, -10, 5, 1.1, 5, 0xffd740);
-  addObstacle(0, 0, -14, 12, 2.4, 2, 0x7c4dff);
-  addObstacle(-16, 0, 8, 3, 1.0, 3, 0x00e5ff);
-  addObstacle(14, 0, 6, 4, 2.0, 4, 0xff4081);
-  addObstacle(-6, 0, 18, 6, 1.2, 3, 0x69f0ae);
-  addObstacle(8, 0, 16, 3, 2.8, 3, 0xff9100);
-}
-
-function createCoins() {
-  const positions = [[-16, -14], [-8, 2], [4, 10], [18, -2], [0, -20], [-20, 12], [16, -16], [-2, -28], [22, 12], [-14, -26]];
-  for (const [x, z] of positions) {
-    const coin = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.55, 0.08, 24), new THREE.MeshStandardMaterial({ color: 0xffd700, metalness: 0.75, roughness: 0.18, emissive: 0x554400 }));
-    coin.rotation.x = Math.PI / 2; coin.position.set(x, 1.0, z); coin.castShadow = true;
-    scene.add(coin);
-    coins.push({ mesh: coin, collected: false, offset: Math.random() * Math.PI * 2 });
-  }
-}
-
-function createDJBooth() {
-  const group = new THREE.Group();
-  const pad = new THREE.Mesh(new THREE.CylinderGeometry(4.5, 4.5, 0.14, 32), new THREE.MeshStandardMaterial({ color: 0x8b5cf6, emissive: 0x3b0a7a, roughness: 0.35, metalness: 0.1 }));
-  pad.position.y = 0.07; pad.receiveShadow = true; group.add(pad);
-  makeBox(group, 3.2, 1.0, 1.2, 0x111827, 0, 0.55, -1.2);
-  makeBox(group, 0.8, 1.5, 0.8, 0x1f2937, -2.6, 0.75, -1.2);
-  makeBox(group, 0.8, 1.5, 0.8, 0x1f2937, 2.6, 0.75, -1.2);
-  makeBox(group, 0.7, 0.7, 0.7, 0x38bdf8, -2.6, 1.8, -1.2);
-  makeBox(group, 0.7, 0.7, 0.7, 0xf472b6, 2.6, 1.8, -1.2);
-  const light = new THREE.PointLight(0xb16cff, 25, 25);
-  light.position.set(0, 4, 0); group.add(light);
-  group.position.copy(djBoothPosition);
-  scene.add(group);
-}
-
-function pointInXZ(x, z, box, radius) { return x > box.min.x - radius && x < box.max.x + radius && z > box.min.z - radius && z < box.max.z + radius; }
-function collidesAt(x, z, y) {
-  const radius = 0.5;
-  for (const box of obstacles) { if (y >= box.max.y - 0.12) continue; if (pointInXZ(x, z, box, radius)) return true; }
-  return false;
-}
-function getGroundHeight(x, z, y) {
-  let h = 0; const radius = 0.42;
-  for (const box of obstacles) { if (pointInXZ(x, z, box, radius) && y >= box.max.y - 0.35) h = Math.max(h, box.max.y); }
-  return h;
-}
-function resetGame() {
-  score = 0; allCoins = false; won = false;
-  player.position.set(0, 0, 26); player.rotation.y = Math.PI; playerVelocity.set(0, 0, 0);
-  for (const coin of coins) { coin.collected = false; coin.mesh.visible = true; }
-}
-
-function update(dt) {
-  const elapsed = clock.elapsedTime;
-  if (!won) {
-    let ix = 0, iz = 0;
-    if (keys['ArrowLeft'] || keys['KeyA'] || keys['KeyQ']) ix -= 1;
-    if (keys['ArrowRight'] || keys['KeyD']) ix += 1;
-    if (keys['ArrowUp'] || keys['KeyW'] || keys['KeyZ']) iz -= 1;
-    if (keys['ArrowDown'] || keys['KeyS']) iz += 1;
-    if (ix !== 0 || iz !== 0) {
-      const len = Math.hypot(ix, iz); ix /= len; iz /= len;
-      const speed = 9.0; const vx = ix * speed; const vz = iz * speed;
-      const newX = player.position.x + vx * dt; const newZ = player.position.z + vz * dt;
-      if (!collidesAt(newX, player.position.z, player.position.y)) player.position.x = newX;
-      if (!collidesAt(player.position.x, newZ, player.position.y)) player.position.z = newZ;
-      player.rotation.y = Math.atan2(vx, vz);
-    }
-    if (keys['Space'] && canJump) { playerVelocity.y = 11.5; canJump = false; tone(180, 0.06, 'square', 0.03); }
-  }
-  playerVelocity.y -= 30 * dt;
-  player.position.y += playerVelocity.y * dt;
-  const groundY = getGroundHeight(player.position.x, player.position.z, player.position.y);
-  if (player.position.y <= groundY) { player.position.y = groundY; playerVelocity.y = 0; canJump = true; }
-  player.position.x = THREE.MathUtils.clamp(player.position.x, -42.5, 42.5);
-  player.position.z = THREE.MathUtils.clamp(player.position.z, -42.5, 42.5);
-
-  for (const coin of coins) {
-    if (coin.collected) continue;
-    coin.mesh.rotation.z += dt * 2.5;
-    coin.mesh.position.y = 1.0 + Math.sin(elapsed * 2.5 + coin.offset) * 0.18;
-    const dist = Math.hypot(player.position.x - coin.mesh.position.x, player.position.z - coin.mesh.position.z);
-    if (dist < 1.35 && Math.abs(player.position.y - coin.mesh.position.y) < 2.2) {
-      coin.collected = true; coin.mesh.visible = false; score++; coinSound();
-      if (score === coins.length) allCoins = true;
-    }
-  }
-
-  if (allCoins && !won) {
-    const distDJ = Math.hypot(player.position.x - djBoothPosition.x, player.position.z - djBoothPosition.z);
-    if (distDJ < 4.5) { won = true; winSound(); }
-  }
-
-  const camPos = player.position.clone().add(new THREE.Vector3(0, 8, 11));
-  camera.position.lerp(camPos, 0.08);
-  camera.lookAt(player.position.clone().add(new THREE.Vector3(0, 1.8, 0)));
-  updateUI();
-  renderer.render(scene, camera);
-}
-
-function updateUI() {
-  scoreEl.textContent = `Pièces : ${score}/${coins.length}`;
-  if (won) messageEl.textContent = 'GG ! Tu as lancé la soirée DJ ! Appuie sur R pour rejouer.';
-  else if (allCoins) messageEl.textContent = 'Toutes les pièces sont ramassées ! Va sur la piste DJ violette au nord.';
-  else messageEl.textContent = 'Ramasse toutes les pièces dorées, puis va sur la piste DJ.';
-}
-
-function animate() { requestAnimationFrame(animate); update(Math.min(clock.getDelta(), 0.05)); }
-
-function initAudio() {
-  if (!audioCtx) { try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { audioCtx = null; } }
-  if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
-}
-function tone(freq = 440, dur = 0.08, type = 'sine', gain = 0.05, when = 0) {
-  if (!audioCtx) return;
-  const t = audioCtx.currentTime + when;
-  const osc = audioCtx.createOscillator(); const g = audioCtx.createGain();
-  osc.type = type; osc.frequency.value = freq;
-  g.gain.setValueAtTime(gain, t); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-  osc.connect(g); g.connect(audioCtx.destination); osc.start(t); osc.stop(t + dur);
-}
-function coinSound() { tone(880, 0.06, 'square', 0.05); tone(1320, 0.08, 'square', 0.04, 0.05); }
-function winSound() { tone(523, 0.18, 'triangle', 0.07, 0.00); tone(659, 0.18, 'triangle', 0.07, 0.12); tone(784, 0.18, 'triangle', 0.07, 0.24); tone(1046, 0.35, 'triangle', 0.08, 0.36); }
-</script>
-</body>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+    <meta name="theme-color" content="#0b0e14" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="icon" href="./icon.svg" type="image/svg+xml" />
+    <title>LAST SIGNAL</title>
+  </head>
+  <body>
+    <canvas id="stage"></canvas>
+    <div id="rain"></div>
+    <div id="vignette"></div>
+    <div id="labels"></div>
+    <div id="hud" hidden>
+      <div id="status"></div>
+      <div id="topright"></div>
+      <div id="team"></div>
+      <div id="bottom">
+        <div id="coach" hidden></div>
+        <button id="ticker" hidden></button>
+        <div id="orders" hidden></div>
+      </div>
+      <canvas id="minimap" width="264" height="198"></canvas>
+      <div id="perf" hidden></div>
+    </div>
+    <div id="overlay" hidden></div>
+    <div id="rotate" hidden>
+      <div>
+        <b>LAST SIGNAL</b>
+        <p>Le jeu est conçu pour le mode paysage. Tournez votre appareil.</p>
+        <button id="rotate-ok">Continuer en portrait</button>
+      </div>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
 </html>
