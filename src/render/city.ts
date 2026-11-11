@@ -4,7 +4,7 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { CANAL } from '../sim/world';
 import type { Shelter } from '../sim/types';
-import { GROUND, ROADS, makeFacade, makeGlow, makeGroundTextures, makeSign, makeWaterNormal, type FacadeStyle } from './textures';
+import { GROUND, ROADS, makeDetail, makeFacade, makeGlow, makeGroundTextures, makeSign, makeWaterNormal, type FacadeStyle } from './textures';
 import type { Quality } from './quality';
 
 function seeded(seed: number) {
@@ -136,6 +136,14 @@ export function buildCity(q: Quality): City {
   // ------------------------------------------------------------ ground & canal
   const tex = makeGroundTextures(q.groundTex);
   const groundMat = new THREE.MeshStandardMaterial({ map: tex.map, roughnessMap: tex.rough, roughness: 1, metalness: 0.08 });
+  // world-scale grain layered over the painted map (one extra texture fetch)
+  const detail = makeDetail();
+  groundMat.onBeforeCompile = (shader) => {
+    shader.uniforms.detailMap = { value: detail };
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', '#include <common>\nuniform sampler2D detailMap;')
+      .replace('#include <map_fragment>', '#include <map_fragment>\n  { float det = texture2D(detailMap, vMapUv * vec2(48.0, 36.0)).r; float fine = texture2D(detailMap, vMapUv * vec2(173.0, 131.0) + 0.37).r; diffuseColor.rgb *= 0.46 + det * 0.72 + fine * 0.4; }');
+  };
   const groundPiece = (x0: number, x1: number) => {
     const g = new THREE.PlaneGeometry(x1 - x0, GROUND.z1 - GROUND.z0);
     g.rotateX(-Math.PI / 2);
@@ -279,6 +287,16 @@ export function buildCity(q: Quality): City {
   B.cyl('metal', 0.45, 0.95, -41, 0, 21.5, 0x3a2f28, 0, 0, true);
   B.box('glow', 0.5, 0.12, 0.5, -41, 0.9, 21.5, 0xffa040);
   glow(-41, 0.1, 21.5, 0xff8a3a, 0.9, 'flicker', 0, 8);
+  B.add('glow', UNIT.cone, 0xffb347, 0.3, 0.75, 0.3, -41, 1.3, 21.5, 0, 0, 0, 0);
+  B.add('glow', UNIT.cone, 0xff6a1f, 0.2, 0.5, 0.2, -40.9, 1.2, 21.6, 1, 0, 0.1, 0);
+  // the operator's field table: radio set, map, mugs
+  B.box('metal', 0.6, 0.32, 0.36, -44.5, 0.95, 24.4, 0x3a4a3f);
+  B.cyl('metal', 0.015, 0.7, -44.25, 1.27, 24.3, 0x9aa0a4);
+  B.box('glow', 0.08, 0.05, 0.02, -44.6, 1.1, 24.59, 0x3fe0c5);
+  B.box('matte', 0.8, 0.02, 0.6, -43.5, 0.95, 24.5, 0xcfc6a8, 0.2);
+  B.cyl('matte', 0.06, 0.12, -43.9, 0.95, 24.85, 0xb5483a);
+  B.cyl('matte', 0.06, 0.12, -44.2, 0.95, 24.9, 0xe8e6d8);
+  for (const [bx, bz] of [[-45.6, 25.6], [-42.4, 25.6]]) B.box('matte', 0.5, 0.45, 0.5, bx, 0, bz, 0x6f5b3c, r());
   for (let i = 0; i < 9; i++) B.box('matte', 0.9 + r() * 0.5, 0.7 + r() * 0.3, 0.9, -34 + r() * 3 - (i % 3) * 0.2, i > 5 ? 0.75 : 0, 15 + (i % 3) * 1.2, [0x6f5b3c, 0x7b6844, 0x566046][i % 3], r() * 0.4);
   B.box('matte', 2.2, 0.1, 1.1, -44, 0.85, 24.5, 0x5e4c36);
   for (const [lx, lz] of [[-45, 24.1], [-43, 24.1], [-45, 24.9], [-43, 24.9]]) B.box('matte', 0.1, 0.85, 0.1, lx, 0, lz, 0x3a3027);
@@ -449,7 +467,7 @@ export function buildCity(q: Quality): City {
   const facadeMats = new Map<FacadeStyle, THREE.MeshStandardMaterial>();
   let fi = 0;
   for (const [style, list] of facades) {
-    const m = new THREE.MeshStandardMaterial({ map: makeFacade(style, 11 + fi++ * 7), roughness: style === 'metal' ? 0.6 : 0.9, metalness: style === 'metal' ? 0.4 : 0 });
+    const m = new THREE.MeshStandardMaterial({ map: makeFacade(style, 11 + fi++ * 7, q.tier !== 'low'), roughness: style === 'metal' ? 0.6 : 0.9, metalness: style === 'metal' ? 0.4 : 0 });
     facadeMats.set(style, m);
     const mesh = new THREE.Mesh(mergeGeometries(list, false)!, m);
     mesh.castShadow = mesh.receiveShadow = q.shadows;
@@ -458,8 +476,9 @@ export function buildCity(q: Quality): City {
   }
 
   // grass tufts (instanced)
-  const tuftGeo = new THREE.ConeGeometry(0.22, 0.85, 4, 1, true);
-  tuftGeo.translate(0, 0.42, 0);
+  // three leaning blades per tuft
+  const blade = (lean: number, turn: number) => new THREE.ConeGeometry(0.07, 0.6, 3, 1, true).translate(0, 0.3, 0).rotateZ(lean).rotateY(turn);
+  const tuftGeo = mergeGeometries([blade(0.3, 0), blade(-0.35, 2.1), blade(0.2, 4.2), blade(0, 1)])!;
   const tufts = new THREE.InstancedMesh(tuftGeo, new THREE.MeshStandardMaterial({ roughness: 1, flatShading: true, side: THREE.DoubleSide }), q.grass);
   const dummy = new THREE.Object3D();
   const tc = new THREE.Color();
@@ -480,9 +499,9 @@ export function buildCity(q: Quality): City {
     for (const [x0, z0, x1, z1] of footprints) if (x > x0 && x < x1 && z > z0 && z < z1) inside = true;
     if (inside || (inYard(x, z) && r() < 0.85)) continue;
     dummy.position.set(x, 0, z);
-    dummy.rotation.set((r() - 0.5) * 0.5, r() * 6.28, (r() - 0.5) * 0.5);
-    const sc = 0.6 + r() * 1.3;
-    dummy.scale.set(sc * (0.8 + r() * 0.8), sc, sc * (0.8 + r() * 0.8));
+    dummy.rotation.set((r() - 0.5) * 0.25, r() * 6.28, (r() - 0.5) * 0.25);
+    const sc = 0.7 + r() * 1.1;
+    dummy.scale.set(sc * (1 + r() * 0.8), sc, sc * (1 + r() * 0.8));
     dummy.updateMatrix();
     tufts.setMatrixAt(placed, dummy.matrix);
     tc.setHex([0x556a2c, 0x64742f, 0x47592a, 0x7a7a3a, 0x8a7a44, 0x3e5024][Math.floor(r() * 6)]).multiplyScalar(0.8 + r() * 0.4);
@@ -694,6 +713,15 @@ export function buildCity(q: Quality): City {
       B.box(mat, 1.1, 0.95, 0.08, -0.2, 0.4, -1.35, c, -0.8);
     }
     if (!o.burnt && r() < 0.5) B.box('matte', 1.6, 0.03, 1.2, 1.3 + r() * 0.3, 0.74, 0, 0x6b3a22); // rust patch on bonnet
+    // bumpers, lights, mirrors, door seams: small parts that pay off when zoomed in
+    B.box('matte', 0.14, 0.22, 1.86, 2.16, 0.3, 0, 0x1a1b1d);
+    B.box('matte', 0.14, 0.22, 1.86, -2.16, 0.3, 0, 0x1a1b1d);
+    for (const lz of [-0.66, 0.66]) {
+      B.box(o.burnt ? 'matte' : 'glass', 0.06, 0.16, 0.36, 2.16, 0.68, lz, o.burnt ? 0x111111 : 0xd9d6c4);
+      B.box('matte', 0.06, 0.14, 0.34, -2.16, 0.7, lz, o.burnt ? 0x111111 : 0x7a1f1a);
+      B.box(mat, 0.16, 0.1, 0.2, 0.78, 1.0, lz * 1.52, c);
+    }
+    B.box('matte', 0.03, 0.62, 1.84, -0.3, 0.38, 0, 0x101113);
     B.pop();
     footprints.push([x - 2.4, z - 2.4, x + 2.4, z + 2.4]);
   }

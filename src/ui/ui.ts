@@ -8,6 +8,7 @@ import { LAST_DAY, mission, objectiveStatus } from '../sim/missions';
 import { MODE_LABEL, NPCS, ORDER_LABEL, fmtClock, fmtTime, nodeName } from '../sim/text';
 import { storedTier, storeTier, type Tier } from '../render/quality';
 import { audio } from './audio';
+import { Tutorial } from './tutorial';
 
 export type Screen = 'title' | 'radio' | 'roster' | 'shelter' | 'debrief' | 'ending' | 'settings' | null;
 
@@ -193,17 +194,13 @@ export class Ui {
   private lastMsg: RadioMessage | null = null;
   private typed = 0;
   private typingMsg = -1;
-  private coachDone = false;
+  tutorial: Tutorial;
   private rotateDismissed = false;
 
   constructor(private g: GameApi) {
     this.el.status.className = 'panel';
     this.el.orders.className = 'panel';
-    try {
-      this.coachDone = localStorage.getItem('last-signal.coach') === '1';
-    } catch {
-      /* ignore */
-    }
+    this.tutorial = new Tutorial(g);
     document.addEventListener('click', (e) => {
       const t = (e.target as HTMLElement).closest<HTMLElement>('[data-act]');
       if (!t) return;
@@ -239,7 +236,10 @@ export class Ui {
       case 'select': g.select(arg, g.selected === arg); break;
       case 'goto': g.select(arg, true); break;
       case 'order': g.pickOrder(arg as OrderType); break;
-      case 'confirm': g.confirmOrder(); this.finishCoach(); break;
+      case 'confirm': g.confirmOrder(); break;
+      case 'tut-next': this.tutorial.next(); break;
+      case 'tut-skip': this.tutorial.finish(); break;
+      case 'tut-reset': Tutorial.reset(); this.toast('Le tutoriel reviendra à la prochaine nouvelle partie.'); break;
       case 'cancel': g.cancelOrder(); break;
       case 'choice': g.choose(arg); break;
       case 'buy': g.buy(arg as keyof Shelter); this.render(); break;
@@ -257,16 +257,6 @@ export class Ui {
       case 'fullscreen': document.documentElement.requestFullscreen?.().catch(() => {}); break;
     }
     this.timer = 0;
-  }
-
-  private finishCoach() {
-    if (this.coachDone) return;
-    this.coachDone = true;
-    try {
-      localStorage.setItem('last-signal.coach', '1');
-    } catch {
-      /* ignore */
-    }
   }
 
   open(screen: Screen) {
@@ -351,6 +341,7 @@ export class Ui {
     const s = this.g.s;
     this.now = t;
     this.edges();
+    this.tutorial.frame(this.g.started && this.screen === null && s.phase === 'running' && s.awaiting === null);
     this.el.rain.style.opacity = String(stormLevel(s) * 0.9);
     const portraitMode = window.innerHeight > window.innerWidth * 1.15 && window.innerWidth < 700;
     this.el.rotate.hidden = !portraitMode || this.rotateDismissed;
@@ -453,13 +444,6 @@ export class Ui {
       this.set(tk, `<b style="color:${c}">${m.fromName}</b><span>${m.delayed ? '<em>(différé)</em> ' : ''}${garble(m.text, m.signal, m.id)}</span>`);
     } else tk.hidden = true;
 
-    // coach marks
-    const c = this.el.coach;
-    if (this.coachDone || this.screen !== null || s.day > 1) c.hidden = true;
-    else {
-      c.hidden = false;
-      c.textContent = !sel ? '① Touchez un survivant (à gauche ou sur la carte)' : !g.orderType ? '② Donnez-lui un ordre' : !g.chosen ? '③ Touchez une destination surlignée' : '④ Transmettez l’ordre par radio';
-    }
   }
 
   private minimap() {
@@ -669,6 +653,7 @@ export class Ui {
         <div class="row"><label>Son radio</label><button class="btn" data-act="sound">${audio.muted ? 'Coupé' : 'Activé'}</button></div>
         <div class="row"><label>Voix parlées<small>${audio.voiceAvailable ? 'Synthèse vocale du navigateur : hors-ligne, qualité variable selon l’appareil.' : 'Non disponible sur ce navigateur.'}</small></label><button class="btn" data-act="voice" ${audio.voiceAvailable ? '' : 'disabled'}>${audio.voice ? 'Activées' : 'Désactivées'}</button></div>
         <div class="row"><label>Profilage<small>FPS, draw calls, triangles, résolution dynamique.</small></label><button class="btn" data-act="perf">${this.showPerf ? 'Affiché' : 'Masqué'}</button></div>
+        <div class="row"><label>Tutoriel<small>Le rejouer à la prochaine nouvelle partie.</small></label><button class="btn" data-act="tut-reset">Réactiver</button></div>
         <div class="row"><label>Plein écran</label><button class="btn" data-act="fullscreen">Activer</button></div>
         <div class="row"><label>Journée en cours<small>Ceux qui sont dehors passeront la nuit dehors.</small></label><button class="btn" data-act="endday">Terminer la journée</button><button class="btn ghost" data-act="new">Nouvelle partie</button></div>
       </div></div></div>`;

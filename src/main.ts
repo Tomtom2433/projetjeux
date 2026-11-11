@@ -96,6 +96,7 @@ class Game implements GameApi {
     audio.unlock();
     this.ui.open(this.s.phase === 'debrief' ? 'debrief' : this.s.phase === 'ending' ? 'ending' : this.s.awaiting !== null ? 'radio' : null);
     this.stage.focus(-36, 12, window.innerWidth < window.innerHeight ? 56 : 30);
+    this.ui.tutorial.maybeStart();
   }
 
   newGame() {
@@ -254,7 +255,7 @@ class Game implements GameApi {
     this.t += dt;
     const s = this.s;
 
-    const running = this.started && !this.paused && this.ui.screen === null && s.phase === 'running' && s.awaiting === null;
+    const running = this.started && !this.paused && !this.ui.tutorial.holding && this.ui.screen === null && s.phase === 'running' && s.awaiting === null;
     if (running) {
       this.acc += dt * this.speed;
       let guard = 0;

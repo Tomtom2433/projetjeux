@@ -279,7 +279,7 @@ export function makeGroundTextures(size: number): { map: THREE.CanvasTexture; ro
 
   const map = new THREE.CanvasTexture(c);
   map.colorSpace = THREE.SRGBColorSpace;
-  map.anisotropy = 4;
+  map.anisotropy = 8;
   const rough = new THREE.CanvasTexture(rc);
   rough.anisotropy = 2;
   return { map, rough };
@@ -288,9 +288,10 @@ export function makeGroundTextures(size: number): { map: THREE.CanvasTexture; ro
 export type FacadeStyle = 'plaster' | 'brick' | 'hospital' | 'metal' | 'concrete';
 
 /** One tile = 8 m wide, two storeys (6.4 m) tall. */
-export function makeFacade(style: FacadeStyle, seed: number): THREE.CanvasTexture {
+export function makeFacade(style: FacadeStyle, seed: number, hi = false): THREE.CanvasTexture {
   const S = 256;
-  const { c, g } = canvas(S, S);
+  const { c, g } = canvas(hi ? S * 2 : S, hi ? S * 2 : S);
+  if (hi) g.scale(2, 2);
   const r = rng(seed);
   const base: Record<FacadeStyle, string> = { plaster: '#8f8672', brick: '#6e4638', hospital: '#aeb1ad', metal: '#59626a', concrete: '#77756f' };
   g.fillStyle = base[style];
@@ -361,7 +362,42 @@ export function makeFacade(style: FacadeStyle, seed: number): THREE.CanvasTextur
   const t = new THREE.CanvasTexture(c);
   t.colorSpace = THREE.SRGBColorSpace;
   t.wrapS = t.wrapT = THREE.RepeatWrapping;
-  t.anisotropy = 2;
+  t.anisotropy = hi ? 8 : 2;
+  return t;
+}
+
+/** Tiling grain multiplied over the painted ground so it stays crisp at close zoom. */
+export function makeDetail(): THREE.CanvasTexture {
+  const S = 256;
+  const { c, g } = canvas(S, S);
+  const r = rng(99);
+  g.fillStyle = '#808080';
+  g.fillRect(0, 0, S, S);
+  for (let i = 0; i < 5200; i++) {
+    const v = Math.floor(70 + r() * 120);
+    g.globalAlpha = 0.25 + r() * 0.45;
+    g.fillStyle = `rgb(${v},${v},${v})`;
+    const s = 0.6 + r() * 2.2;
+    g.fillRect(r() * S, r() * S, s, s * (0.6 + r() * 0.8));
+  }
+  g.globalAlpha = 0.5;
+  g.strokeStyle = '#4a4a4a';
+  g.lineWidth = 0.7;
+  for (let i = 0; i < 26; i++) {
+    let x = r() * S;
+    let y = r() * S;
+    g.beginPath();
+    g.moveTo(x, y);
+    for (let k = 0; k < 5; k++) {
+      x += (r() - 0.5) * 26;
+      y += (r() - 0.5) * 26;
+      g.lineTo(x, y);
+    }
+    g.stroke();
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.anisotropy = 4;
   return t;
 }
 

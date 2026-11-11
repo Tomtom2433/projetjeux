@@ -181,7 +181,7 @@ export function setupDay(s: GameState, ev: SimEvent[]) {
   for (const n of NODES) s.intel[n.id] = { seenAt: -1, threat: 0, lootKnown: false };
   for (const id of ['shelter', 'gate', 'cross_w']) s.intel[id].seenAt = 0;
   // Yesterday's rumour: stale on purpose (the real pack is larger).
-  s.intel.bridge_e = { seenAt: -900, threat: 3, lootKnown: false };
+  s.intel.bridge_e = { seenAt: -900, threat: 2, lootKnown: false };
 
   s.loot = {};
   for (const [node, k] of Object.entries(m.loot)) s.loot[node] = { supplies: 0, medicine: 0, parts: 0, ...k };

@@ -49,29 +49,61 @@ interface Look {
   scale?: number;
 }
 
-/** One merged, vertex-coloured mesh per character: a single draw call each. */
-function figureGeo(l: Look): THREE.BufferGeometry {
+interface FigureParts {
+  core: THREE.BufferGeometry;
+  /** Limbs are modelled hanging from their pivot (hip or shoulder) at the origin. */
+  leg: THREE.BufferGeometry;
+  arm: THREE.BufferGeometry;
+  hipX: number;
+  hipY: number;
+  shoulderX: number;
+  shoulderY: number;
+}
+
+/** Rounded low-poly character, split so limbs can swing. Readable from far, holds up when zoomed in. */
+function figureParts(l: Look): FigureParts {
   const pants = l.pants ?? 0x2a2e33;
   const skin = l.skin ?? 0xd0a988;
   const w = l.wide ?? 1;
-  const hz = l.hunched ? 0.08 : 0;
+  const hz = l.hunched ? 0.1 : 0;
   const box = (bw: number, bh: number, bd: number, x: number, y: number, z: number, c: number) => colored(new THREE.BoxGeometry(bw, bh, bd).translate(x, y, z), c);
-  const parts = [
-    box(0.22, 0.85, 0.3, -0.15 * w, 0.43, 0, pants),
-    box(0.22, 0.85, 0.3, 0.15 * w, 0.43, 0, pants),
-    box(0.66 * w, 0.78, 0.4, 0, 1.24, hz, l.jacket),
-    box(0.2, 0.7, 0.24, -0.44 * w, 1.24, l.hunched ? 0.25 : 0, l.jacket),
-    box(0.2, 0.7, 0.24, 0.44 * w, 1.24, l.hunched ? 0.25 : 0, l.jacket),
-    colored(new THREE.SphereGeometry(0.25, 8, 6).translate(0, 1.86, l.hunched ? 0.16 : 0), skin),
+  const cap = (r: number, len: number, x: number, y: number, z: number, c: number, sx = 1, sz = 1) => colored(new THREE.CapsuleGeometry(r, len, 3, 8).scale(sx, 1, sz).translate(x, y, z), c);
+  const ball = (r: number, x: number, y: number, z: number, c: number) => colored(new THREE.SphereGeometry(r, 10, 8).translate(x, y, z), c);
+  const headZ = l.hunched ? 0.18 : 0;
+  const dark = new THREE.Color(l.jacket).multiplyScalar(0.7).getHex();
+  const core = [
+    cap(0.27, 0.34, 0, 1.24, hz, l.jacket, 1.18 * w, 0.78), // torso
+    cap(0.24, 0.05, 0, 0.9, 0, pants, 1.1 * w, 0.8), // hips
+    box(0.4 * w, 0.07, 0.3, 0, 0.98, 0.02, 0x1c1c1e), // belt
+    box(0.3, 0.1, 0.06, 0, 1.56, 0.2 + hz, dark), // collar
+    colored(new THREE.CylinderGeometry(0.085, 0.1, 0.14, 8).translate(0, 1.64, headZ * 0.6), skin), // neck
+    ball(0.235, 0, 1.87, headZ, skin),
+    ball(0.032, -0.085, 1.9, headZ + 0.215, 0x1b1410), // eyes
+    ball(0.032, 0.085, 1.9, headZ + 0.215, 0x1b1410),
+    box(0.05, 0.07, 0.05, 0, 1.84, headZ + 0.225, new THREE.Color(skin).multiplyScalar(0.88).getHex()), // nose
   ];
-  if (l.hair !== undefined) parts.push(box(0.46, 0.2, 0.46, 0, 2.02, -0.03, l.hair), box(0.46, 0.34, 0.14, 0, 1.86, -0.2, l.hair));
-  if (l.ponytail) parts.push(box(0.14, 0.42, 0.14, 0, 1.72, -0.34, l.hair ?? 0x2b1d16));
-  if (l.hat !== undefined) parts.push(box(0.52, 0.24, 0.52, 0, 2.04, 0, l.hat), box(0.54, 0.08, 0.54, 0, 1.93, 0, 0x1c2227));
-  if (l.hood !== undefined) parts.push(box(0.6, 0.5, 0.5, 0, 1.92, -0.1, l.hood), box(0.5, 0.2, 0.36, 0, 1.6, -0.12, l.hood));
-  if (l.pack !== undefined && l.pack !== null) parts.push(box(0.5 * w, 0.62, 0.28, 0, 1.3, -0.33, l.pack));
-  if (l.stripes) parts.push(box(0.68 * w, 0.09, 0.42, 0, 1.42, hz, 0xe8e6d8), box(0.68 * w, 0.09, 0.42, 0, 1.08, hz, 0xe8e6d8));
-  if (l.tool) parts.push(colored(new THREE.BoxGeometry(0.07, 1.05, 0.07).rotateZ(0.6).translate(0.05, 1.45, -0.5), 0x8d9296));
-  if (l.satchel !== undefined) parts.push(box(0.14, 0.34, 0.4, 0.42 * w, 0.95, 0, l.satchel), colored(new THREE.BoxGeometry(0.06, 0.06, 0.2).translate(0.5 * w, 0.98, 0), 0x2fae90));
+  if (l.hair !== undefined) core.push(colored(new THREE.SphereGeometry(0.25, 10, 8, 0, Math.PI * 2, 0, Math.PI * 0.55).translate(0, 1.89, headZ - 0.02), l.hair), box(0.44, 0.3, 0.12, 0, 1.84, headZ - 0.19, l.hair));
+  if (l.ponytail) core.push(cap(0.07, 0.3, 0, 1.68, -0.3, l.hair ?? 0x2b1d16));
+  if (l.hat !== undefined) core.push(colored(new THREE.SphereGeometry(0.265, 10, 8, 0, Math.PI * 2, 0, Math.PI * 0.5).translate(0, 1.9, headZ), l.hat), colored(new THREE.CylinderGeometry(0.27, 0.27, 0.09, 12).translate(0, 1.93, headZ), 0x1c2227));
+  if (l.hood !== undefined) core.push(colored(new THREE.SphereGeometry(0.3, 10, 8, 0, Math.PI * 2, 0, Math.PI * 0.62).rotateX(-0.35).translate(0, 1.88, headZ - 0.05), l.hood), box(0.46, 0.2, 0.3, 0, 1.6, -0.14, l.hood));
+  if (l.pack !== undefined && l.pack !== null) core.push(cap(0.17, 0.32, 0, 1.28, -0.34, l.pack, 1.4 * w, 0.8), box(0.3 * w, 0.14, 0.1, 0, 1.2, -0.5, new THREE.Color(l.pack).multiplyScalar(0.75).getHex()));
+  if (l.stripes) core.push(colored(new THREE.CylinderGeometry(0.3, 0.3, 0.07, 10).scale(1.2 * w, 1, 0.8).translate(0, 1.42, hz), 0xe8e6d8), colored(new THREE.CylinderGeometry(0.3, 0.3, 0.07, 10).scale(1.2 * w, 1, 0.8).translate(0, 1.12, hz), 0xe8e6d8));
+  if (l.tool) core.push(colored(new THREE.CylinderGeometry(0.03, 0.03, 1.1, 6).rotateZ(0.6).translate(0.05, 1.45, -0.54), 0x8d9296), box(0.16, 0.05, 0.05, 0.4, 1.9, -0.54, 0x8d9296));
+  if (l.satchel !== undefined) core.push(box(0.14, 0.32, 0.38, 0.4 * w, 0.95, 0, l.satchel), box(0.02, 0.14, 0.05, 0.475 * w, 0.97, 0, 0x2fae90), box(0.02, 0.05, 0.14, 0.475 * w, 0.97, 0, 0x2fae90));
+  const leg = mergeGeometries([cap(0.115, 0.5, 0, -0.38, 0, pants), box(0.2, 0.13, 0.36, 0, -0.79, 0.05, 0x17181a)])!;
+  const arm = mergeGeometries([cap(0.095, 0.4, 0, -0.27, 0, l.jacket), ball(0.085, 0, -0.6, 0, skin)])!;
+  return { core: mergeGeometries(core)!, leg, arm, hipX: 0.15 * w, hipY: 0.86, shoulderX: 0.4 * w, shoulderY: 1.5 };
+}
+
+/** Single-mesh version (civilians and the instanced horde): limbs baked in a rest pose. */
+function figureGeo(l: Look): THREE.BufferGeometry {
+  const p = figureParts(l);
+  const armPose = l.hunched ? -1.15 : -0.06;
+  const parts = [p.core];
+  for (const side of [-1, 1]) {
+    parts.push(p.leg.clone().translate(side * p.hipX, p.hipY, 0));
+    parts.push(p.arm.clone().rotateX(armPose + (l.hunched ? side * 0.12 : 0)).translate(side * p.shoulderX, p.shoulderY, l.hunched ? 0.1 : 0));
+  }
   const g = mergeGeometries(parts)!;
   const sc = 1.3 * (l.scale ?? 1);
   g.scale(sc, sc, sc);
@@ -96,7 +128,10 @@ const NPC_LOOKS: Look[] = [
 
 interface SurvivorView {
   group: THREE.Group;
-  body: THREE.Mesh;
+  body: THREE.Group;
+  mat: THREE.MeshStandardMaterial;
+  limbs: { legL: THREE.Mesh; legR: THREE.Mesh; armL: THREE.Mesh; armR: THREE.Mesh };
+  size: number;
   ring: THREE.Mesh;
   crate: THREE.Mesh;
   followers: THREE.Mesh[];
@@ -151,7 +186,7 @@ export class Actors {
       scene.add(m);
       this.rings.push(m);
     }
-    this.selRing = new THREE.Mesh(new THREE.RingGeometry(1.25, 1.6, 24).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.9, depthTest: false, toneMapped: false }));
+    this.selRing = new THREE.Mesh(new THREE.RingGeometry(1.25, 1.5, 32).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.9, depthWrite: false, toneMapped: false }));
     this.selRing.renderOrder = 6;
     this.selRing.visible = false;
     scene.add(this.selRing);
@@ -195,9 +230,27 @@ export class Actors {
 
   private addSurvivor(sv: Survivor) {
     const col = new THREE.Color(sv.color).getHex();
-    const body = new THREE.Mesh(figureGeo(survivorLook(sv.id, col)), new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85, transparent: true }));
-    body.castShadow = this.stage.q.shadows;
-    const ring = new THREE.Mesh(new THREE.RingGeometry(0.75, 1.05, 20).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.9, depthTest: false, toneMapped: false }));
+    const look = survivorLook(sv.id, col);
+    const parts = figureParts(look);
+    const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.82, transparent: true });
+    const shadows = this.stage.q.shadows;
+    const mk = (g: THREE.BufferGeometry, x = 0, y = 0) => {
+      const m = new THREE.Mesh(g, mat);
+      m.position.set(x, y, 0);
+      m.castShadow = shadows;
+      return m;
+    };
+    const body = new THREE.Group();
+    const limbs = {
+      legL: mk(parts.leg, -parts.hipX, parts.hipY),
+      legR: mk(parts.leg, parts.hipX, parts.hipY),
+      armL: mk(parts.arm, -parts.shoulderX, parts.shoulderY),
+      armR: mk(parts.arm, parts.shoulderX, parts.shoulderY),
+    };
+    body.add(mk(parts.core), limbs.legL, limbs.legR, limbs.armL, limbs.armR);
+    const size = 1.3 * (look.scale ?? 1);
+    body.scale.setScalar(size);
+    const ring = new THREE.Mesh(new THREE.RingGeometry(0.78, 1.0, 28).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.9, depthWrite: false, toneMapped: false }));
     ring.position.y = 0.12;
     ring.renderOrder = 6;
     const crate = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.5, 0.5), new THREE.MeshStandardMaterial({ color: 0x8a7446, roughness: 0.9 }));
@@ -205,6 +258,12 @@ export class Actors {
     crate.visible = false;
     const group = new THREE.Group();
     group.add(body, ring, crate);
+    if (!shadows) {
+      // cheap contact shadow on the low tier
+      const blob = new THREE.Mesh(new THREE.CircleGeometry(0.8, 16).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.32, depthWrite: false }));
+      blob.position.y = 0.06;
+      group.add(blob);
+    }
     const followers: THREE.Mesh[] = [];
     for (let i = 0; i < this.npcGeos.length; i++) {
       const f = new THREE.Mesh(this.npcGeos[i], new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9 }));
@@ -218,7 +277,7 @@ export class Actors {
     tag.style.setProperty('--c', sv.color);
     this.labels.appendChild(tag);
     const p = survivorPos(sv);
-    this.views.set(sv.id, { group, body, ring, crate, followers, tag, x: p.x, z: p.z, heading: 0, walk: 0, hit: 0 });
+    this.views.set(sv.id, { group, body, mat, limbs, size, ring, crate, followers, tag, x: p.x, z: p.z, heading: 0, walk: 0, hit: 0 });
   }
 
   /** Where the operator believes the survivor is. */
@@ -380,16 +439,40 @@ export class Actors {
         'YXZ',
       );
       v.body.position.set(Math.sin(v.heading) * lunge * 0.35, carried ? 2.25 : down ? 0.35 : moving ? Math.abs(Math.sin(v.walk)) * 0.14 : 0, Math.cos(v.heading) * lunge * 0.35);
-      v.body.scale.y = crouch ? 0.68 : resting ? 0.6 : searching ? 0.85 : 1;
+      v.body.scale.set(v.size, v.size * (crouch ? 0.7 : resting ? 0.62 : searching ? 0.86 : 1), v.size);
+      // limbs: stride, reach, guard
+      const stride = moving ? Math.sin(v.walk) * (sv.mode === 'flee' ? 0.95 : 0.65) : 0;
+      const carrying = stockTotal(sv.carrying) > 0 || !!(sv.helping && s.survivors.some((o) => o.carriedBy === sv.id));
+      const L = v.limbs;
+      L.legL.rotation.x = down ? 0 : crouch || resting ? -1.0 : stride;
+      L.legR.rotation.x = down ? 0 : crouch || resting ? -1.0 : -stride;
+      let aL = -stride * 0.8;
+      let aR = stride * 0.8;
+      if (down) aL = aR = -2.8;
+      else if (carrying) aL = aR = -2.75;
+      else if (fighting) {
+        aR = -1.5 - lunge * 0.9;
+        aL = -0.9;
+      } else if (searching) {
+        aL = -1.1 + Math.sin(t * 7) * 0.35;
+        aR = -1.1 - Math.sin(t * 7) * 0.35;
+      } else if (observing) aL = aR = -2.2; // binoculars up
+      else if (crouch) aL = aR = -0.5;
+      L.armL.rotation.x += (aL - L.armL.rotation.x) * Math.min(1, dt * 14);
+      L.armR.rotation.x += (aR - L.armR.rotation.x) * Math.min(1, dt * 14);
+      L.armL.rotation.z = observing ? -0.5 : -0.08;
+      L.armR.rotation.z = observing ? 0.5 : 0.08;
       v.ring.visible = !carried;
-      const mat = v.body.material as THREE.MeshStandardMaterial;
+      const mat = v.mat;
       mat.opacity = sv.linked ? 1 : 0.38;
       v.hit = Math.max(0, v.hit - dt * 2.5);
       mat.emissive.setRGB(v.hit * 0.9, 0, 0);
       const ringMat = v.ring.material as THREE.MeshBasicMaterial;
       ringMat.opacity = sv.linked ? 0.9 : 0.35 + Math.sin(t * 4) * 0.15;
       ringMat.color.set(fighting || (sv.mode === 'flee' && sv.linked) ? (Math.sin(t * 10) > 0 ? '#ff5a45' : sv.color) : sv.color);
-      v.ring.scale.setScalar(1 + (ui.selected === sv.id ? Math.sin(t * 5) * 0.06 : 0));
+      // markers shrink as the camera closes in, so they never bury the character
+      const near = Math.min(1, Math.max(0.5, stage.view.zoom / 26));
+      v.ring.scale.setScalar(near * (1 + (ui.selected === sv.id ? Math.sin(t * 5) * 0.06 : 0)));
       v.crate.visible = stockTotal(sv.carrying) > 0 && !down;
       v.crate.rotation.y = v.heading;
 
@@ -429,6 +512,7 @@ export class Actors {
     this.selRing.visible = !!sel && sel.group.visible;
     if (sel) {
       this.selRing.position.set(sel.x, 0.14, sel.z);
+      this.selRing.scale.setScalar(Math.min(1, Math.max(0.5, stage.view.zoom / 26)));
       this.selRing.rotation.y = t * 0.8;
     }
 

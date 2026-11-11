@@ -16,7 +16,7 @@ export class Stage {
   /** Smoothed camera state (world units; zoom = half the vertical extent). */
   view = { x: -30, z: 8, zoom: 34 };
   goal = { x: -30, z: 8, zoom: 34 };
-  minZoom = 14;
+  minZoom = 8;
   maxZoom = 62;
   onTap: (x: number, y: number) => void = () => {};
   private pointers = new Map<number, { x: number; y: number; sx: number; sy: number; t: number }>();

@@ -74,7 +74,7 @@ export function mission(s: GameState): Mission {
           "ECHO-7, ici Mara. On n'a plus d'antibiotiques. Il en reste à l'hôpital Saint-Roch, de l'autre côté du canal. Le pont est le chemin le plus court, mais personne n'a vu le checkpoint depuis hier. Vous êtes nos yeux, opérateur. La nuit tombe dans dix minutes.",
         hint: 'Objectif : rapporter au moins 2 doses de médicaments avant la nuit.',
         loot: { quay_s: { supplies: 2 }, apts: { supplies: 3 }, hosp_in: { medicine: 5 }, garage: { supplies: 1, parts: 3 } },
-        threats: [['bridge_e', 4, 'dormant'], ['parvis', 2, 'wander'], ['east_s', 3, 'dormant'], ['quay_n', 1, 'wander']],
+        threats: [['bridge_e', 3, 'dormant'], ['parvis', 2, 'wander'], ['east_s', 3, 'dormant'], ['quay_n', 1, 'wander']],
         incidents: ['bridge', 'hospital', 'unknown'],
       };
     case 2:
