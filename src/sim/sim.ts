@@ -84,12 +84,14 @@ function deliverOrder(s: GameState, sv: Survivor, order: Order, ev: SimEvent[]) 
   const vars = { node: order.target ? nodeName(order.target) : '' };
   if (sv.health < 20 && order.type !== 'hold' && order.type !== 'retreat') {
     say(s, ev, sv, line(s, sv, 'refuse_hurt'));
+    ev.push({ type: 'order', survivor: sv.id, result: 'refused' });
     return;
   }
   if (obeyScore(s, sv, order) < 0.32) {
     say(s, ev, sv, line(s, sv, 'refuse', vars));
     shiftTrust(sv, -2);
     remember(s, sv, `A refusé un ordre vers ${vars.node}.`, -0.2);
+    ev.push({ type: 'order', survivor: sv.id, result: 'refused' });
     return;
   }
   sv.order = order;
@@ -97,6 +99,7 @@ function deliverOrder(s: GameState, sv: Survivor, order: Order, ev: SimEvent[]) 
   sv.work = 0;
   setMode(s, sv, 'order');
   say(s, ev, sv, line(s, sv, 'ack_' + order.type, vars));
+  ev.push({ type: 'order', survivor: sv.id, result: 'ack' });
 }
 
 export function issueOrder(s: GameState, svId: string, type: OrderType, target: NodeId | null, ev: SimEvent[]): { ok: boolean; reason?: string } {
@@ -108,6 +111,7 @@ export function issueOrder(s: GameState, svId: string, type: OrderType, target: 
   if (!sv.linked) {
     sv.pendingOrder = order;
     systemMsg(s, ev, `Pas de liaison avec ${sv.short}. Ordre en attente : il partira quand le signal reviendra.`, 'alert');
+    ev.push({ type: 'order', survivor: sv.id, result: 'queued' });
     return { ok: true, reason: 'queued' };
   }
   deliverOrder(s, sv, order, ev);

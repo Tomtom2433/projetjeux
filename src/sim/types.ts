@@ -207,4 +207,5 @@ export type SimEvent =
   | { type: 'deposit'; survivor: string }
   | { type: 'link'; survivor: string; linked: boolean }
   | { type: 'flare'; node: NodeId }
+  | { type: 'order'; survivor: string; result: 'ack' | 'refused' | 'queued' }
   | { type: 'phase' };

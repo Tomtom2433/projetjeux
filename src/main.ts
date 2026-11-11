@@ -179,6 +179,9 @@ class Game implements GameApi {
   focus(x: number, z: number) {
     this.stage.focus(x, z);
   }
+  project(x: number, z: number) {
+    return this.stage.project(x, 1.2, z);
+  }
   togglePause() {
     this.paused = !this.paused;
   }
@@ -222,6 +225,9 @@ class Game implements GameApi {
       if (e.type === 'radio') {
         const m = this.s.radio.find((r) => r.id === e.id);
         if (m) this.ui.onRadio(m);
+      } else if (e.type === 'order') {
+        const sv = survivor(this.s, e.survivor);
+        if (sv) this.ui.orderFeedback(sv, e.result);
       } else if (e.type === 'hit') this.actors.onHit(e.survivor);
       else if (e.type === 'noise') {
         if (this.s.intel[e.node].seenAt >= this.s.time - 3) this.actors.pulse(e.node);

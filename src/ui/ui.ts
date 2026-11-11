@@ -1,7 +1,7 @@
 // DOM interface: tactical HUD, radio, roster, shelter, debrief, title.
 import type { GameState, NodeId, OrderType, RadioMessage, Shelter, Survivor } from '../sim/types';
 import { NODE, NODES, EDGES, CANAL } from '../sim/world';
-import { LINK_THRESHOLD, pathLength, signalAt, stormLevel, survivorSignal, zoneOf, darkness } from '../sim/core';
+import { LINK_THRESHOLD, pathLength, signalAt, stockTotal, stormLevel, survivorSignal, zoneOf, darkness } from '../sim/core';
 import { canEndDay, validTargets } from '../sim/sim';
 import { UPGRADES, storageCap, upgradeBlocker } from '../sim/state';
 import { MODE_LABEL, ORDER_LABEL, fmtClock, fmtTime, nodeName } from '../sim/text';
@@ -33,6 +33,7 @@ export interface GameApi {
   continueGame(): void;
   hasSave(): boolean;
   focus(x: number, z: number): void;
+  project(x: number, z: number): { x: number; y: number };
   togglePause(): void;
   cycleSpeed(): void;
   stats(): { calls: number; tris: number; scale: number; ms: number; tier: string };
@@ -171,7 +172,12 @@ export class Ui {
     overlay: document.getElementById('overlay')!,
     rain: document.getElementById('rain')!,
     rotate: document.getElementById('rotate')!,
+    toasts: document.getElementById('toasts')!,
+    edges: document.getElementById('edges')!,
   };
+  private flash = new Map<string, { cls: string; until: number }>();
+  private edgeEls = new Map<string, HTMLButtonElement>();
+  private now = 0;
   private timer = 0;
   private cache = new Map<HTMLElement, string>();
   private lastMsg: RadioMessage | null = null;
@@ -220,7 +226,8 @@ export class Ui {
     switch (a) {
       case 'open': this.open(arg as Screen); break;
       case 'close': this.close(); break;
-      case 'select': g.select(g.selected === arg ? arg : arg, g.selected === arg); break;
+      case 'select': g.select(arg, g.selected === arg); break;
+      case 'goto': g.select(arg, true); break;
       case 'order': g.pickOrder(arg as OrderType); break;
       case 'confirm': g.confirmOrder(); this.finishCoach(); break;
       case 'cancel': g.cancelOrder(); break;
@@ -272,9 +279,66 @@ export class Ui {
     else if (this.screen === 'radio') this.render();
   }
 
+  toast(text: string, kind: 'ok' | 'bad' | 'wait' = 'ok', color = 'var(--teal)') {
+    const d = document.createElement('div');
+    d.className = 'toast ' + kind;
+    d.style.setProperty('--c', color);
+    d.innerHTML = text;
+    this.el.toasts.appendChild(d);
+    setTimeout(() => d.remove(), 3200);
+    while (this.el.toasts.children.length > 3) this.el.toasts.firstElementChild!.remove();
+  }
+
+  /** Make the outcome of a transmitted order impossible to miss. */
+  orderFeedback(sv: Survivor, result: 'ack' | 'refused' | 'queued') {
+    const label = { ack: 'ordre reçu', refused: 'refuse l’ordre', queued: 'hors réseau — ordre en attente' }[result];
+    this.toast(`<b>${sv.short}</b> ${label}`, result === 'ack' ? 'ok' : result === 'refused' ? 'bad' : 'wait', sv.color);
+    this.flash.set(sv.id, { cls: result === 'ack' ? 'f-ok' : result === 'refused' ? 'f-bad' : 'f-wait', until: this.now + 1.6 });
+    if (result === 'refused') navigator.vibrate?.([40, 60, 40]);
+    this.timer = 0;
+  }
+
+  /** Arrows on the screen edge for survivors outside the camera frame. */
+  private edges() {
+    const s = this.g.s;
+    const W = window.innerWidth;
+    const H = window.innerHeight;
+    const show = this.g.started && this.screen === null;
+    for (const sv of s.survivors) {
+      let el = this.edgeEls.get(sv.id);
+      if (!el) {
+        el = document.createElement('button');
+        el.className = 'edge';
+        el.dataset.act = 'goto';
+        el.dataset.arg = sv.id;
+        el.style.setProperty('--c', sv.color);
+        el.innerHTML = `<i></i><b>${sv.short[0]}</b>`;
+        this.el.edges.appendChild(el);
+        this.edgeEls.set(sv.id, el);
+      }
+      const p = this.g.shown(sv);
+      const sp = this.g.project(p.x, p.z);
+      const off = sp.x < 0 || sp.x > W || sp.y < 50 || sp.y > H - 10;
+      if (!show || !sv.alive || !off) {
+        if (!el.hidden) el.hidden = true;
+        continue;
+      }
+      el.hidden = false;
+      const x = Math.min(W - 150, Math.max(196, sp.x));
+      const y = Math.min(H - 78, Math.max(72, sp.y));
+      const a = Math.atan2(sp.y - y, sp.x - x);
+      el.style.transform = `translate3d(${x.toFixed(0)}px,${y.toFixed(0)}px,0) translate(-50%,-50%)`;
+      (el.firstElementChild as HTMLElement).style.transform = `rotate(${a.toFixed(2)}rad) translateX(17px)`;
+      const cls = 'edge' + (['flee', 'down', 'fight'].includes(sv.mode) && sv.linked ? ' danger' : !sv.linked ? ' lost' : '');
+      if (el.className !== cls) el.className = cls;
+    }
+  }
+
   // ------------------------------------------------------------------ frame
   frame(dt: number, t: number) {
     const s = this.g.s;
+    this.now = t;
+    this.edges();
     this.el.rain.style.opacity = String(stormLevel(s) * 0.9);
     const portraitMode = window.innerHeight > window.innerWidth * 1.15 && window.innerWidth < 700;
     this.el.rotate.hidden = !portraitMode || this.rotateDismissed;
@@ -323,12 +387,14 @@ export class Ui {
       this.el.team,
       s.survivors
         .map((sv) => {
-          const st = !sv.alive ? (sv.missing ? 'Disparu·e' : 'Mort·e') : !sv.linked ? `Signal perdu · ${fmtTime(s.time - sv.lastReport.time)}` : sv.mode === 'order' && sv.order ? `${sv.order.stage === 'return' ? 'Retour' : ORDER_LABEL[sv.order.type]}${sv.order.target && sv.order.stage !== 'return' && sv.order.type !== 'retreat' ? ' · ' + nodeName(sv.order.target) : ''}` : `${MODE_LABEL[sv.mode]} · ${nodeName(zoneOf(sv))}`;
+          const st = !sv.alive ? (sv.missing ? 'Disparu·e' : 'Mort·e') : !sv.linked ? (sv.pendingOrder ? `⏳ ${ORDER_LABEL[sv.pendingOrder.type]} en attente du signal` : `Signal perdu · ${fmtTime(s.time - sv.lastReport.time)}`) : sv.mode === 'order' && sv.order ? `${sv.order.stage === 'return' ? 'Retour' : ORDER_LABEL[sv.order.type]}${sv.order.target && sv.order.stage !== 'return' && sv.order.type !== 'retreat' ? ' · ' + nodeName(sv.order.target) : ''}` : `${MODE_LABEL[sv.mode]} · ${nodeName(zoneOf(sv))}`;
           const cls = !sv.alive ? '' : !sv.linked ? 'lost' : ['flee', 'down', 'fight'].includes(sv.mode) ? 'danger' : '';
-          return `<button class="chip ${g.selected === sv.id ? 'sel' : ''} ${sv.alive ? '' : 'dead'}" style="--c:${sv.color}" data-act="select" data-arg="${sv.id}">
+          const fl = this.flash.get(sv.id);
+          const fcls = fl && fl.until > this.now ? fl.cls : '';
+          return `<button class="chip ${fcls} ${g.selected === sv.id ? 'sel' : ''} ${sv.alive ? '' : 'dead'}" style="--c:${sv.color}" data-act="select" data-arg="${sv.id}">
             <span class="av">${portrait(sv.id, sv.color, moodOf(sv))}</span><b>${sv.short}</b>${sv.alive ? bars(survivorSignal(s, sv)) : '<span></span>'}
             <span class="st ${cls}">${st}</span>
-            <span class="meters"><span class="meter hp"><i style="width:${sv.health.toFixed(0)}%"></i></span><span class="meter fear"><i style="width:${sv.fear.toFixed(0)}%"></i></span><span class="meter fat"><i style="width:${sv.fatigue.toFixed(0)}%"></i></span></span>
+            <span class="meters"><span class="mw"><em>♥</em><span class="meter hp"><i style="width:${sv.health.toFixed(0)}%"></i></span></span><span class="mw"><em>ϟ</em><span class="meter fear"><i style="width:${sv.fear.toFixed(0)}%"></i></span></span><span class="mw"><em>☾</em><span class="meter fat"><i style="width:${sv.fatigue.toFixed(0)}%"></i></span></span></span>
           </button>`;
         })
         .join(''),
@@ -423,6 +489,23 @@ export class Ui {
       if (n.kind === 'interior' || n.id === 'shelter') c.rect(X(n.x) - 5, Z(n.z) - 5, 10, 10);
       else c.arc(X(n.x), Z(n.z), 3.5, 0, 7);
       c.fill();
+      if (n.id !== 'shelter' && signalAt(s, n.id) < LINK_THRESHOLD) {
+        c.strokeStyle = 'rgba(240,178,74,0.85)';
+        c.lineWidth = 1.5;
+        c.setLineDash([3, 3]);
+        c.beginPath();
+        c.arc(X(n.x), Z(n.z), 10, 0, 7);
+        c.stroke();
+        c.setLineDash([]);
+      }
+      if (it.lootKnown && s.loot[n.id] && stockTotal(s.loot[n.id]) > 0) {
+        c.fillStyle = '#e6cf7a';
+        c.save();
+        c.translate(X(n.x) - 8, Z(n.z) + 8);
+        c.rotate(Math.PI / 4);
+        c.fillRect(-3, -3, 6, 6);
+        c.restore();
+      }
       if (it.threat > 0 && it.seenAt !== -1) {
         const fresh = s.time - it.seenAt < 4;
         c.fillStyle = fresh ? '#ff5a45' : 'rgba(255,107,87,0.45)';
