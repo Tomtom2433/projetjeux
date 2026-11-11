@@ -47,7 +47,7 @@ button { font: inherit; color: inherit; background: none; border: 0; cursor: poi
 #hud { position: fixed; inset: 0; pointer-events: none; }
 #hud > * { pointer-events: auto; }
 .panel { background: var(--bg); border: 1px solid var(--line); border-radius: 8px; }
-#status { position: absolute; left: calc(8px + var(--sl)); top: calc(8px + var(--st)); padding: 7px 10px; display: flex; gap: 10px; align-items: center; }
+#status { position: absolute; overflow: hidden; left: calc(8px + var(--sl)); top: calc(8px + var(--st)); padding: 7px 10px; display: flex; gap: 10px; align-items: center; }
 .bars { display: inline-flex; align-items: flex-end; gap: 2px; height: 16px; }
 .bars i { width: 3px; background: rgba(255, 255, 255, 0.16); border-radius: 1px; }
 .bars i.on { background: var(--teal); }
@@ -330,4 +330,101 @@ h4.sec { margin: 14px 0 6px; font-size: 9.5px; letter-spacing: 0.16em; text-tran
   .portrait { width: 64px; flex: none; }
   .btn .lbl { display: none; }
   .obj-line { display: none; }
+}
+
+
+/* =====================================================================
+   Post-apocalyptic skin: worn steel panels, stencil headings, typewriter
+   radio text, hazard tape, field-report paper. Layered over the base UI.
+   ===================================================================== */
+:root {
+  --rust: #8a5a3a;
+  --steel: url(../art/ui-metal.webp);
+  --stencil: 'Saira Stencil One', 'Oswald', system-ui, sans-serif;
+  --type: 'Special Elite', ui-monospace, 'Courier New', monospace;
+  --notch: polygon(9px 0, 100% 0, 100% calc(100% - 9px), calc(100% - 9px) 100%, 0 100%, 0 9px);
+}
+.panel, .btn, .chip, #ticker, #orders .o, #minimap, .toast, #eventcard, .edge {
+  background-image: linear-gradient(rgba(9, 12, 18, 0.78), rgba(9, 12, 18, 0.86)), var(--steel);
+  background-size: cover;
+  border-color: rgba(138, 90, 58, 0.55);
+}
+.panel, .chip, #ticker, #orders, .btn, #orders .o { border-radius: 3px; clip-path: var(--notch); }
+#minimap { border-radius: 3px; }
+.btn { font-family: var(--stencil); font-weight: 400; letter-spacing: 0.08em; text-transform: uppercase; font-size: 11px; box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.07), inset 0 -2px 0 rgba(0, 0, 0, 0.35); }
+.btn:active { box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.6); }
+.btn.primary { background-image: linear-gradient(rgba(255, 255, 255, 0.18), rgba(0, 0, 0, 0.12)); background-color: var(--teal); color: #07130f; border-color: rgba(0, 0, 0, 0.4); }
+#orders .confirm .btn.primary { background-color: var(--oc, var(--teal)); }
+.btn.act { border-color: var(--teal); }
+#orders .o { font-family: var(--stencil); font-weight: 400; letter-spacing: 0.06em; text-transform: uppercase; font-size: 10px; border-bottom: 3px solid var(--oc); }
+#orders .o.on { background-image: linear-gradient(color-mix(in srgb, var(--oc) 26%, transparent), rgba(9, 12, 18, 0.8)), var(--steel); }
+.chip { border-left-width: 4px; }
+.chip b, .tag.sv b { font-family: var(--stencil); font-weight: 400; letter-spacing: 0.06em; text-transform: uppercase; }
+.sig small, .clock small, .obj-line { font-family: var(--stencil); letter-spacing: 0.1em; }
+.sig b, .clock b { font-family: var(--type); font-size: 14px; }
+#ticker span, .toast, #eventcard p { font-family: var(--type); }
+/* hazard tape under the status block */
+#status::after { content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background: repeating-linear-gradient(-45deg, #e0b23c 0 7px, #14161a 7px 14px); opacity: 0.75; }
+
+.sheet { border-radius: 4px; border: 1px solid rgba(138, 90, 58, 0.7); background-image: linear-gradient(rgba(10, 13, 19, 0.9), rgba(10, 13, 19, 0.95)), var(--steel); background-size: cover; box-shadow: 0 18px 50px rgba(0, 0, 0, 0.7), inset 0 0 0 1px rgba(255, 255, 255, 0.04); position: relative; }
+/* rivets */
+.sheet::before { content: ''; position: absolute; inset: 6px; pointer-events: none; z-index: 2; background: radial-gradient(circle, rgba(190, 170, 150, 0.55) 0 1.6px, rgba(0, 0, 0, 0.5) 1.7px 2.6px, transparent 2.8px) 0 0 / 7px 7px no-repeat, radial-gradient(circle, rgba(190, 170, 150, 0.55) 0 1.6px, rgba(0, 0, 0, 0.5) 1.7px 2.6px, transparent 2.8px) 100% 0 / 7px 7px no-repeat, radial-gradient(circle, rgba(190, 170, 150, 0.55) 0 1.6px, rgba(0, 0, 0, 0.5) 1.7px 2.6px, transparent 2.8px) 0 100% / 7px 7px no-repeat, radial-gradient(circle, rgba(190, 170, 150, 0.55) 0 1.6px, rgba(0, 0, 0, 0.5) 1.7px 2.6px, transparent 2.8px) 100% 100% / 7px 7px no-repeat; }
+.sheet > header { border-bottom: 0; padding-bottom: 12px; background: linear-gradient(rgba(0, 0, 0, 0.35), transparent); position: relative; }
+.sheet > header::after { content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 4px; background: repeating-linear-gradient(-45deg, #e0b23c 0 9px, #14161a 9px 18px); opacity: 0.8; }
+.sheet > header h2 { font-family: var(--stencil); font-weight: 400; font-size: 14px; letter-spacing: 0.16em; color: #e8dcc4; }
+.sheet > header small { font-family: var(--type); }
+.x { border-radius: 3px; font-family: var(--stencil); border-color: rgba(138, 90, 58, 0.7); }
+.radio .msg { font-family: var(--type); font-size: 15px; color: #efe6d2; }
+.radio .who b, .card h3, .upc h3, .npc b { font-family: var(--stencil); font-weight: 400; letter-spacing: 0.05em; text-transform: uppercase; }
+.choice { border-radius: 3px; clip-path: var(--notch); border-color: rgba(167, 139, 250, 0.6); background-image: linear-gradient(rgba(40, 30, 70, 0.72), rgba(18, 16, 30, 0.85)), var(--steel); background-size: cover; }
+.choice b { font-family: var(--stencil); font-weight: 400; letter-spacing: 0.05em; text-transform: uppercase; font-size: 12.5px; }
+.card, .upc, .npc, .xp { border-radius: 3px; border-color: rgba(138, 90, 58, 0.45); background: rgba(0, 0, 0, 0.28); }
+.card h4, .cols h4, h4.sec, .offer h4 { font-family: var(--stencil); font-weight: 400; }
+.pill { border-radius: 2px; font-family: var(--type); background: rgba(232, 220, 196, 0.1); }
+.portrait, .chip .av { border-radius: 3px; border: 1px solid rgba(138, 90, 58, 0.7); }
+.scene { border-radius: 3px; border-color: rgba(138, 90, 58, 0.7); }
+.log { font-family: var(--type); }
+.title h1 { font-family: var(--stencil); font-weight: 400; letter-spacing: 0.18em; color: #e8dcc4; text-shadow: 0 2px 0 #000; }
+.title h1 span { color: #e0b23c; }
+.title p { font-family: var(--type); }
+.seg { border-radius: 3px; border-color: rgba(138, 90, 58, 0.6); }
+.seg button { font-family: var(--stencil); text-transform: uppercase; letter-spacing: 0.06em; }
+.seg button.on { background: #e0b23c; }
+
+/* field-report paper for the debrief and the epilogue */
+.paper { background: #d9c9a3 url(../art/ui-paper.webp) center / cover; background-attachment: local; box-shadow: inset 0 0 40px rgba(60, 35, 10, 0.55); color: #2b2118; padding: 26px 34px 22px !important; font-family: var(--type); }
+.paper h1 { font-family: var(--type); font-size: 18px; color: #1d1610; }
+.paper h4, .paper .cols h4 { color: #6a4a2c; border-bottom: 1px solid rgba(60, 40, 20, 0.3); padding-bottom: 2px; }
+.paper .none, .paper .xp span { color: #4a3a2a; }
+.paper ul { color: #2b2118; }
+.paper .xp { background: rgba(60, 40, 20, 0.08); border-color: rgba(60, 40, 20, 0.35); border-left: 4px solid var(--c); }
+.paper .xp em { color: #6a3fa0; }
+.paper .meter { background: rgba(60, 40, 20, 0.2); }
+.stamp { font-family: var(--stencil); border-width: 2px; transform: rotate(-3deg); padding: 4px 12px; font-size: 12px; }
+.paper .stamp.succes { color: #1d6b55; }
+.paper .stamp.mitige { color: #9a6a12; }
+.paper .stamp.echec { color: #a8291c; }
+.ending.paper p { color: #2b2118; font-size: 13.5px; }
+.paper .scene { filter: sepia(0.35) contrast(1.05); border: 3px solid #efe6d2; box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4); transform: rotate(-0.6deg); }
+.paper .npc { background: rgba(60, 40, 20, 0.08); border-color: rgba(60, 40, 20, 0.3); }
+.paper .npc small { color: #6b5a48; }
+
+/* training card: Mara talks, you act */
+#coach.tut { display: grid; grid-template-columns: 54px 1fr auto; gap: 10px; align-items: center; width: min(560px, 100%); padding: 8px 10px; border-radius: 3px; clip-path: var(--notch); background: linear-gradient(rgba(18, 14, 30, 0.9), rgba(12, 12, 20, 0.95)), var(--steel); background-size: cover; border: 1px solid var(--purple); border-left: 4px solid #d9623b; }
+#coach.tut .tp { width: 54px; height: 54px; border-radius: 3px; overflow: hidden; border: 1px solid rgba(138, 90, 58, 0.8); }
+#coach.tut small { font-family: var(--stencil); font-size: 9.5px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--purple); }
+#coach.tut p { margin: 2px 0 0; flex: none; }
+#coach.tut .say { font-family: var(--type); font-size: 12.5px; line-height: 1.35; color: #efe6d2; }
+#coach.tut .todo { font-size: 12px; line-height: 1.35; color: #bfe9e0; }
+#coach.tut .todo b { color: #fff; }
+#coach.tut .acts { display: flex; flex-direction: column; gap: 5px; }
+#coach.tut .btn { min-height: 32px; min-width: 78px; font-size: 10.5px; }
+#tut-ring.round { border-radius: 50%; border-width: 3px; }
+@media (max-height: 460px) {
+  #coach.tut { grid-template-columns: 42px 1fr auto; padding: 5px 8px; gap: 8px; width: min(520px, 100%); }
+  #coach.tut .tp { width: 42px; height: 42px; }
+  #coach.tut .say { font-size: 11px; line-height: 1.28; }
+  #coach.tut .todo { font-size: 10.5px; line-height: 1.28; }
+  .radio .msg { font-size: 13px; }
+  .paper { padding: 16px 22px 14px !important; }
 }

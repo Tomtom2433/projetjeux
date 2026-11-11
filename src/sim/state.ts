@@ -4,7 +4,7 @@ import { NODE, NODES } from './world';
 import { emptyStock, pushRadio, rnd } from './core';
 import { mission } from './missions';
 
-export const SAVE_VERSION = 6;
+export const SAVE_VERSION = 7;
 export const MISSION_DURATION = 600;
 
 function makeSurvivor(p: Partial<Survivor> & Pick<Survivor, 'id' | 'name' | 'short' | 'role' | 'color'>): Survivor {
@@ -56,12 +56,12 @@ function makeSurvivor(p: Partial<Survivor> & Pick<Survivor, 'id' | 'name' | 'sho
   };
 }
 
-export function newGame(seed = (Date.now() & 0x7fffffff) || 1): GameState {
+export function newGame(seed = (Date.now() & 0x7fffffff) || 1, tutorial = false): GameState {
   const s: GameState = {
     version: SAVE_VERSION,
     seed,
     rng: seed | 0,
-    day: 1,
+    day: tutorial ? 0 : 1,
     time: 0,
     duration: MISSION_DURATION,
     phase: 'running',
@@ -215,7 +215,7 @@ export function setupDay(s: GameState, ev: SimEvent[]) {
     text,
     kind: 'incident',
     incident: 'briefing',
-    art: ['shelter', 'shelter', 'unknown', 'burst', 'boat'][Math.min(4, s.day - 1)],
+    art: ['shelter', 'shelter', 'unknown', 'burst', 'boat'][Math.max(0, Math.min(4, s.day - 1))],
     choices: m.choices ?? [{ id: 'ok', label: 'Reçu. On y va.', hint: m.hint }],
   });
   s.awaiting = msg.id;

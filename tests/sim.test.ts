@@ -200,3 +200,31 @@ describe('five-day arc', () => {
     expect(labels.size).toBeGreaterThanOrEqual(4);
   });
 });
+
+describe('training day', () => {
+  it('walks through scout, retrieve and rescue, then hands over to day 1', () => {
+    const s = newGame(321, true);
+    const ev: SimEvent[] = [];
+    expect(s.day).toBe(0);
+    resolveChoice(s, 'ok', ev);
+    issueOrder(s, 'lena', 'scout', 'cross_w', ev);
+    issueOrder(s, 'jo', 'retrieve', 'quay_s', ev);
+    let ordered = false;
+    for (let i = 0; i < 2400 && s.phase === 'running' && !s.flags.tut_rescued; i++) {
+      step(s, TICK, ev);
+      if (s.flags.tut_victim && !ordered) {
+        ordered = true;
+        const victim = s.survivors.find((v) => v.id === s.flags.tut_victim)!;
+        expect(victim.mode).toBe('down');
+        issueOrder(s, 'mara', 'rescue', victim.at, ev);
+      }
+    }
+    expect(s.flags.tut_rescued).toBe(true);
+    expect(objectiveStatus(s).done).toBe(true);
+    expect(s.survivors.every((v) => v.alive)).toBe(true);
+    endDay(s, ev);
+    nextDay(s, ev);
+    expect(s.day).toBe(1);
+    expect(s.survivors.every((v) => v.health === 100)).toBe(true);
+  });
+});

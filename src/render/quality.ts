@@ -15,9 +15,9 @@ export interface Quality {
 }
 
 const TIERS: Record<Tier, Omit<Quality, 'tier'>> = {
-  low: { pixelRatio: 1, antialias: false, shadows: false, shadowMap: 0, groundTex: 1024, grass: 350, bushes: 110, pointLights: 0, litScale: 1 },
-  medium: { pixelRatio: 1.5, antialias: true, shadows: true, shadowMap: 1024, groundTex: 2048, grass: 1100, bushes: 220, pointLights: 0, litScale: 1 },
-  high: { pixelRatio: 2, antialias: true, shadows: true, shadowMap: 2048, groundTex: 4096, grass: 2400, bushes: 320, pointLights: 3, litScale: 2 },
+  low: { pixelRatio: 1.5, antialias: true, shadows: false, shadowMap: 0, groundTex: 1024, grass: 350, bushes: 110, pointLights: 0, litScale: 1 },
+  medium: { pixelRatio: 2, antialias: true, shadows: true, shadowMap: 1024, groundTex: 2048, grass: 1100, bushes: 220, pointLights: 0, litScale: 1 },
+  high: { pixelRatio: 3, antialias: true, shadows: true, shadowMap: 2048, groundTex: 4096, grass: 2400, bushes: 320, pointLights: 3, litScale: 2 },
 };
 
 const KEY = 'last-signal.quality';

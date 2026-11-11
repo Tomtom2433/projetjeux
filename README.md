@@ -46,7 +46,11 @@ Glisser pour déplacer la caméra, pincer ou molette pour zoomer, mini-carte pou
   voiture, averse, sac abandonné, inconnu qui appelle à l'aide. Déterministe, hors-ligne, sans script.
 - **Progression** (`src/sim/perks.ts`) : expérience par action, niveaux, et une compétence à choisir par niveau
   parmi quatre propres à chaque survivant.
-- **Tutoriel** guidé sur le premier jour, rejouable depuis les réglages.
+- **Formation « Prise de poste »** : une journée d'entraînement scénarisée, menée par Mara à la radio, en onze
+  étapes (reconnaître, récupérer, secourir un blessé). Chaque étape attend le vrai geste et désigne où toucher.
+  Proposée à la première partie, passable, rejouable depuis les réglages.
+- **Habillage post-apo** : panneaux d'acier usé, rivets, bandes de signalisation, titres au pochoir, texte radio
+  en machine à écrire, débrief sur papier de rapport. Polices embarquées, textures générées avec Magnific.
 - **Illustrations** (`public/art`) : 8 portraits et 20 scènes peints, générés avec Magnific puis embarqués en
   WebP (1,4 Mo au total, mis en cache pour le hors-ligne). Les incidents du pont et de l'hôpital ont une scène
   par survivant ; les événements du directeur s'affichent en carte illustrée.

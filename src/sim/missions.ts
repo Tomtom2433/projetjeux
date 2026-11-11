@@ -8,6 +8,7 @@ export const LAST_DAY = 5;
 export type Objective =
   | { kind: 'deliver'; res: keyof Stock; n: number; nodes: NodeId[] }
   | { kind: 'scout'; nodes: NodeId[] }
+  | { kind: 'tutorial' }
   | { kind: 'evacuate'; node: NodeId };
 
 export interface Mission {
@@ -26,6 +27,8 @@ const RES: Record<keyof Stock, string> = { medicine: 'Médicaments', parts: 'Pi�
 
 export function objective(s: GameState): Objective {
   switch (Math.min(s.day, LAST_DAY)) {
+    case 0:
+      return { kind: 'tutorial' };
     case 1:
       return { kind: 'deliver', res: 'medicine', n: 2, nodes: ['hosp_in'] };
     case 2:
@@ -48,6 +51,13 @@ export interface ObjectiveStatus {
 
 export function objectiveStatus(s: GameState): ObjectiveStatus {
   const o = objective(s);
+  if (o.kind === 'tutorial') {
+    const steps = [!!s.flags.scouted_cross_w, s.delivered.supplies >= 1, !!s.flags.tut_rescued];
+    const n = steps.filter(Boolean).length;
+    const victim = s.survivors.find((v) => v.id === s.flags.tut_victim);
+    const node = !steps[0] ? 'cross_w' : !steps[1] ? 'quay_s' : victim && victim.mode === 'down' ? zoneOf(victim) : null;
+    return { label: `Formation ${n}/3`, detail: n >= 3 ? 'terminez la journée' : ['reconnaître', 'récupérer', 'secourir'][n], done: n >= 3, nodes: node ? [node] : [] };
+  }
   if (o.kind === 'deliver') {
     const got = s.delivered[o.res];
     return { label: `${RES[o.res]} ${Math.min(got, o.n)}/${o.n}`, detail: got >= o.n ? 'rentrez tous' : '', done: got >= o.n, nodes: got >= o.n ? [] : o.nodes.filter((n) => (s.loot[n]?.[o.res] ?? 0) > 0) };
@@ -67,6 +77,17 @@ export function mission(s: GameState): Mission {
   const p = s.persistent;
   const harder = p.flareUsed ? 1 : 0;
   switch (Math.min(s.day, LAST_DAY)) {
+    case 0:
+      return {
+        title: 'Prise de poste',
+        brief:
+          'ECHO-7, ici Mara Kessler. Vogel est parti il y a neuf jours sans laisser un mot, et son micro est à vous maintenant. Avant qu’on vous confie des vies, on va faire trois choses simples, près de l’abri : regarder, ramasser, ramener quelqu’un. Je vous guide. Écoutez-moi, et écoutez-les surtout.',
+        hint: 'Formation : trois exercices guidés par Mara. Aucun danger à l’ouest du canal.',
+        loot: { quay_s: { supplies: 2 } },
+        threats: [['bridge_e', 2, 'dormant']],
+        incidents: [],
+        storm: [9999, 9999],
+      };
     case 1:
       return {
         title: 'Saint-Roch',

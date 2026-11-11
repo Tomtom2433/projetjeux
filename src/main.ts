@@ -14,6 +14,9 @@ import { buildCity } from './render/city';
 import { Actors, type UiView } from './render/actors';
 import { Ui, type GameApi } from './ui/ui';
 import { audio } from './ui/audio';
+import { Tutorial } from './ui/tutorial';
+import '@fontsource/special-elite/latin-400.css';
+import '@fontsource/saira-stencil-one/latin-400.css';
 
 function polyline(path: NodeId[] | null, start?: { x: number; z: number }): [number, number][] | null {
   if (!path || path.length < 1) return null;
@@ -101,6 +104,16 @@ class Game implements GameApi {
   }
 
   newGame() {
+    clearSave();
+    // first-time players start with the guided training day
+    this.rebuild(newGame(undefined, !Tutorial.seen()));
+    this.begin();
+  }
+
+  /** Leave the training and go straight to day 1. */
+  skipTutorial() {
+    if (this.s.day !== 0) return;
+    Tutorial.markSeen();
     clearSave();
     this.rebuild(newGame());
     this.begin();
@@ -253,6 +266,8 @@ class Game implements GameApi {
         else if (this.s.phase === 'ending') this.ui.open('ending');
         else if (this.s.phase === 'running') {
           this.ui.open(this.s.awaiting !== null ? 'radio' : null);
+          if (this.s.day > 0) Tutorial.markSeen();
+          this.ui.tutorial.maybeStart();
           this.stage.focus(-36, 12);
         }
       }

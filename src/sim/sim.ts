@@ -248,6 +248,7 @@ function arriveHome(s: GameState, sv: Survivor, ev: SimEvent[]) {
       remember(s, ally, `${sv.short} l’a ramené·e à ECHO-7 sur son dos.`, 0.8);
       remember(s, sv, `A ramené ${ally.short} vivant·e.`, 0.7);
       thank(s, ally, sv, ev);
+      if (s.day === 0) s.flags.tut_rescued = true;
       people.push(ally.short);
     }
     sv.helping = null;
@@ -640,7 +641,8 @@ function decide(s: GameState, sv: Survivor, prox: Proximity, ev: SimEvent[]) {
       hopsCached(here, zoneOf(a)) <= (sv.linked ? 4 : 1) &&
       !s.survivors.some((o) => o !== sv && o.alive && o.mode !== 'down' && o.helping === a.id),
   );
-  if (ally && !sv.helping && !escorting(sv) && !(sv.order?.type === 'rescue')) {
+  // (during training the operator has to give the rescue order himself)
+  if (ally && s.day > 0 && !sv.helping && !escorting(sv) && !(sv.order?.type === 'rescue')) {
     sc.help = 0.2 + ((sv.relations[ally.id] ?? 50) / 100) * 0.55 + courage * 0.25 - fear * 0.3;
   }
 
@@ -792,15 +794,16 @@ export function step(s: GameState, dt: number, ev: SimEvent[]) {
   s.time += dt;
   const second = Math.floor(s.time) !== prevSecond;
 
+  if (s.day === 0) tutorialScript(s, ev);
   if (!s.flags.stormWarned && s.time >= s.storm.start - 25) {
     s.flags.stormWarned = true;
     systemMsg(s, ev, 'Front orageux à l’ouest. Interférences radio attendues dans moins d’une minute.', 'alert', 'burst');
   }
-  if (!s.flags.duskWarned && s.time >= s.duration - 120) {
+  if (s.day > 0 && !s.flags.duskWarned && s.time >= s.duration - 120) {
     s.flags.duskWarned = true;
     systemMsg(s, ev, 'Deux minutes avant la nuit. Rappelez tout le monde.', 'alert');
   }
-  if (!s.flags.nightPack && s.time >= s.duration * 0.7) {
+  if (s.day > 0 && !s.flags.nightPack && s.time >= s.duration * 0.7) {
     s.flags.nightPack = true;
     s.threats.push({ id: s.nextThreatId++, at: 'east_n', to: null, progress: 0, size: 3, state: 'wander', target: null, goal: null, timer: 5, seen: false });
     s.threats.push({ id: s.nextThreatId++, at: 'quay_s', to: null, progress: 0, size: 2, state: 'wander', target: null, goal: null, timer: 12, seen: false });
@@ -812,7 +815,7 @@ export function step(s: GameState, dt: number, ev: SimEvent[]) {
   if (second) {
     for (const th of s.threats) th.seen = false;
     tickBanter(s, ev);
-    tickDirector(s, ev);
+    if (s.day > 0) tickDirector(s, ev);
     if (s.awaiting !== null) return;
   }
 
@@ -863,6 +866,28 @@ export function step(s: GameState, dt: number, ev: SimEvent[]) {
 }
 
 // ---------------------------------------------------------------- end of day
+
+/** Day 0: the one scripted beat of the training. Once the first two exercises are done, someone outside goes down. */
+function tutorialScript(s: GameState, ev: SimEvent[]) {
+  if (s.flags.tut_fall || !s.flags.scouted_cross_w || s.delivered.supplies < 1) return;
+  s.flags.tut_fall = true;
+  const victim = s.survivors.find((v) => v.id === 'lena' && v.alive && zoneOf(v) !== 'shelter') ?? s.survivors.find((v) => v.alive && v.mode !== 'down' && zoneOf(v) !== 'shelter');
+  if (!victim) {
+    s.flags.tut_rescued = true;
+    systemMsg(s, ev, 'Tout le monde est à l’abri : pas de blessé à ramener aujourd’hui. Tant mieux.');
+    return;
+  }
+  s.flags.tut_victim = victim.id;
+  say(s, ev, victim, victim.id === 'jo' ? 'Merde— ma cheville. La plaque d’égout a cédé. Je peux plus poser le pied.' : 'Aïe ! Ma cheville— je suis tombée. Je peux pas me relever. Je suis désolée.', 'alert', 'rescue');
+  setMode(s, victim, 'down');
+  victim.health = 22;
+  victim.bleed = 99999;
+  victim.order = null;
+  victim.at = zoneOf(victim);
+  victim.to = null;
+  victim.progress = 0;
+  systemMsg(s, ev, `${victim.short} est à terre. Balise active : ${nodeName(victim.at)}.`, 'alert');
+}
 
 export function canEndDay(s: GameState): boolean {
   if (s.phase !== 'running') return false;
@@ -957,7 +982,9 @@ function buildDebrief(s: GameState, notes: string[], obj: ObjectiveStatus, title
   const c: string[] = [...notes];
   const med = s.delivered.medicine;
   const o = objective(s);
-  if (s.day === 1) {
+  if (o.kind === 'tutorial') {
+    c.push(obj.done ? 'Formation terminée. Mara dit que vous écoutez mieux que Vogel. Ce n’est pas un compliment, c’est un constat.' : 'La formation n’est pas terminée. Demain, ce ne sera plus un exercice.');
+  } else if (s.day === 1) {
     if (med >= 2) c.push(`L’infirmerie tient : ${med} doses rapportées.`);
     else {
       c.push(med === 1 ? 'Une seule dose rapportée. Pas assez pour tout le monde.' : 'Aucun médicament rapporté. Les blessés vont s’affaiblir.');
@@ -997,7 +1024,7 @@ function buildDebrief(s: GameState, notes: string[], obj: ObjectiveStatus, title
     else if (sv.trust > 80) c.push(`${sv.short} vous suivrait n’importe où (${Math.round(sv.trust)}).`);
   }
   const alive = s.survivors.filter((v) => v.alive).length;
-  const partial = o.kind === 'deliver' ? s.delivered[o.res] >= 1 : o.kind === 'scout' ? !!s.flags.vogelLocated : s.survivors.some((v) => s.persistent['evac_' + v.id]);
+  const partial = o.kind === 'tutorial' ? true : o.kind === 'deliver' ? s.delivered[o.res] >= 1 : o.kind === 'scout' ? !!s.flags.vogelLocated : s.survivors.some((v) => s.persistent['evac_' + v.id]);
   const rating = alive === 0 ? 'echec' : obj.done && deaths.length === 0 ? 'succes' : obj.done || (deaths.length === 0 && partial) ? 'mitige' : 'echec';
   void title;
   const headline =
@@ -1035,6 +1062,18 @@ export function nextDay(s: GameState, ev: SimEvent[]) {
   }
   if (!alive.length) {
     s.phase = 'gameover';
+    return;
+  }
+  if (s.day === 0) {
+    // the training costs nothing: everyone starts the real first day fresh
+    for (const sv of alive) {
+      sv.health = 100;
+      sv.fatigue = 8;
+      sv.fear = sv.id === 'lena' ? 25 : 15;
+    }
+    s.day = 1;
+    setupDay(s, ev);
+    ev.push({ type: 'phase' });
     return;
   }
   for (const sv of alive) {

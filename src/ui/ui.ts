@@ -31,6 +31,7 @@ export interface GameApi {
   choose(choiceId: string): void;
   buy(key: keyof Shelter): void;
   perk(svId: string, perkId: string): void;
+  skipTutorial(): void;
   endDayNow(): void;
   nextDay(): void;
   newGame(): void;
@@ -173,6 +174,7 @@ function garble(text: string, sig: number, id: number): string {
   return out;
 }
 
+const dayName = (d: number) => (d === 0 ? 'Formation' : `Jour ${d}`);
 const esc = (t: string) => t.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]!);
 
 export class Ui {
@@ -246,8 +248,8 @@ export class Ui {
       case 'order': g.pickOrder(arg as OrderType); break;
       case 'confirm': g.confirmOrder(); break;
       case 'tut-next': this.tutorial.next(); break;
-      case 'tut-skip': this.tutorial.finish(); break;
-      case 'tut-reset': Tutorial.reset(); this.toast('Le tutoriel reviendra à la prochaine nouvelle partie.'); break;
+      case 'tut-skip': this.tutorial.finish(); g.skipTutorial(); break;
+      case 'tut-reset': Tutorial.reset(); this.toast('La formation reviendra à la prochaine nouvelle partie.'); break;
       case 'cancel': g.cancelOrder(); break;
       case 'choice': g.choose(arg); break;
       case 'buy': g.buy(arg as keyof Shelter); this.render(); break;
@@ -394,7 +396,7 @@ export class Ui {
       this.el.status,
       `<div class="sig">${bars(sig)}</div>
        <div class="sig"><small>${sel ? 'Signal ' + sel.short : 'Réseau'}${stormLevel(s) > 0.3 ? ' · orage' : ''}</small><b>${sel && !sel.linked ? 'PERDU' : Math.round(sig * 100) + ' %'}</b></div>
-       <div class="clock"><small>Jour ${s.day} · ${fmtClock(s.time)}</small><b>${left > 0 ? 'Nuit dans ' + fmtTime(left) : 'Nuit'}</b><div class="timebar"><i style="width:${Math.min(100, (s.time / s.duration) * 100).toFixed(1)}%"></i></div></div>
+       <div class="clock"><small>${dayName(s.day)} · ${fmtClock(s.time)}</small><b>${left > 0 ? 'Nuit dans ' + fmtTime(left) : 'Nuit'}</b><div class="timebar"><i style="width:${Math.min(100, (s.time / s.duration) * 100).toFixed(1)}%"></i></div></div>
        <div class="obj-line ${obj.done ? 'done' : ''}">Objectif<br><b>${obj.label}</b>${obj.detail ? ' — ' + obj.detail : ''}</div>`,
     );
     const end = canEndDay(s) && s.time > 20;
@@ -628,7 +630,7 @@ export class Ui {
       const m = await_ ?? this.lastMsg ?? s.radio[s.radio.length - 1];
       const sv = m ? s.survivors.find((v) => v.id === m.from) : undefined;
       const who = sv ? `<b>${sv.name}</b><small>${sv.role}</small>` : `<b>${m?.fromName ?? 'ECHO-7'}</b><small>${m?.from === 'unknown' ? 'Fréquence non identifiée' : 'Station radio'}</small>`;
-      html = `<div class="sheet">${head(await_?.incident === 'briefing' ? `Jour ${s.day} · ${mission(s).title}` : 'Transmission · canal 7', `Jour ${s.day} · ${fmtClock(m?.time ?? s.time)}`, !await_)}<div class="body">
+      html = `<div class="sheet">${head(await_?.incident === 'briefing' ? `${dayName(s.day)} · ${mission(s).title}` : 'Transmission · canal 7', `${dayName(s.day)} · ${fmtClock(m?.time ?? s.time)}`, !await_)}<div class="body">
         ${m?.art ? `<div class="scene" style="background-image:url(./art/s-${m.art}.webp)"></div>` : ''}
         ${m ? `<div class="radio"><div class="who"><div class="portrait">${portrait(sv ? sv.id : m.from === 'unknown' ? 'unknown' : 'echo', sv?.color, sv ? { ...moodOf(sv), lost: m.signal < 0.34 } : {})}</div><div>${who}<div class="sigrow">${bars(m.signal)} ${Math.round(m.signal * 100)} %${m.delayed ? ' · message différé' : ''}</div></div><canvas id="wave" width="300" height="68" data-sig="${m.signal}"></canvas></div>
         <div><p class="msg mono" id="rmsg" data-id="${m.id}" data-act="skip"></p>
@@ -636,7 +638,7 @@ export class Ui {
         ${!await_ ? `<h4 style="margin:14px 0 6px;font-size:10px;letter-spacing:.16em;color:var(--dim)">JOURNAL</h4><div class="log">${[...s.radio].reverse().slice(0, 40).map((r) => `<div class="${r.kind}"><time>${fmtClock(r.time)}</time><b>${r.fromName}</b>${r.delayed ? '<em>différé</em>' : ''} — ${garble(r.text, r.signal, r.id)}${r.chosen ? ` <em>→ ${esc(r.choices?.find((c) => c.id === r.chosen)?.label ?? '')}</em>` : ''}</div>`).join('')}</div>` : ''}
       </div></div>`;
     } else if (this.screen === 'roster') {
-      html = `<div class="sheet">${head('Équipe', `Jour ${s.day}`)}<div class="body"><div class="cards">${s.survivors.map((sv) => this.card(sv)).join('')}</div>
+      html = `<div class="sheet">${head('Équipe', `${dayName(s.day)}`)}<div class="body"><div class="cards">${s.survivors.map((sv) => this.card(sv)).join('')}</div>
         ${s.rescued.length ? `<h4 class="sec">À l’abri grâce à vous</h4><div class="npcs">${[...new Set(s.rescued)].map((n) => NPCS[n]).filter(Boolean).map((n) => `<div class="npc"><div class="portrait">${portrait(n.id, n.color, { hurt: n.id === 'patient' })}</div><div><b>${n.name}</b><small>${n.role}</small><p>${n.note}</p></div></div>`).join('')}</div>` : ''}</div></div>`;
     } else if (this.screen === 'shelter') {
       const cap = storageCap(s);
@@ -656,7 +658,7 @@ export class Ui {
       const d = s.debrief;
       const list = (items: string[], none: string) => (items.length ? `<ul>${items.map((i) => `<li>${esc(i)}</li>`).join('')}</ul>` : `<div class="none">${none}</div>`);
       const alive = s.survivors.some((v) => v.alive);
-      html = `<div class="sheet debrief">${head(`Débrief · fin du jour ${d.day}`, '', false)}<div class="body">
+      html = `<div class="sheet debrief">${head(d.day === 0 ? 'Débrief · formation' : `Débrief · fin du jour ${d.day}`, '', false)}<div class="body paper">
         <span class="stamp ${d.rating}">${{ succes: 'MISSION ACCOMPLIE', mitige: 'BILAN MITIGÉ', echec: 'ÉCHEC' }[d.rating]}</span>
         <h1>${esc(d.headline)}</h1>
         <div class="cols" style="margin-top:12px">
@@ -669,7 +671,7 @@ export class Ui {
         </div></div>
         <div class="actions"><button class="btn" data-act="open" data-arg="roster">${ICON.team} Équipe</button><button class="btn" data-act="open" data-arg="shelter">${ICON.home} Abri</button><button class="btn ghost" data-act="new">Nouvelle partie</button>${alive || d.day >= LAST_DAY ? `<button class="btn primary" data-act="nextday">${d.day >= LAST_DAY ? 'Épilogue' : 'Jour suivant'}</button>` : ''}</div></div>`;
     } else if (this.screen === 'ending' && s.ending) {
-      html = `<div class="sheet debrief">${head('Dernier signal · épilogue', `${LAST_DAY} jours`, false)}<div class="body ending"><div class="scene" style="background-image:url(./art/s-${s.persistent.final === 'leave' ? 'boat' : 'final'}.webp)"></div>
+      html = `<div class="sheet debrief">${head('Dernier signal · épilogue', `${LAST_DAY} jours`, false)}<div class="body ending paper"><div class="scene" style="background-image:url(./art/s-${s.persistent.final === 'leave' ? 'boat' : 'final'}.webp)"></div>
         ${s.ending.map((l, i) => `<p style="animation-delay:${(i * 0.9).toFixed(1)}s">${esc(l)}</p>`).join('')}
         ${s.rescued.length ? `<div class="npcs" style="margin-top:12px">${[...new Set(s.rescued)].map((n) => NPCS[n]).filter(Boolean).map((n) => `<div class="npc"><div class="portrait">${portrait(n.id, n.color)}</div><div><b>${n.name}</b><small>${n.role}</small></div></div>`).join('')}</div>` : ''}
         </div><div class="actions"><button class="btn" data-act="open" data-arg="roster">${ICON.team} Équipe</button><button class="btn primary" data-act="new">Nouvelle partie</button></div></div>`;
@@ -680,7 +682,7 @@ export class Ui {
         <div class="row"><label>Son radio</label><button class="btn" data-act="sound">${audio.muted ? 'Coupé' : 'Activé'}</button></div>
         <div class="row"><label>Voix parlées<small>${audio.voiceAvailable ? 'Synthèse vocale du navigateur : hors-ligne, qualité variable selon l’appareil.' : 'Non disponible sur ce navigateur.'}</small></label><button class="btn" data-act="voice" ${audio.voiceAvailable ? '' : 'disabled'}>${audio.voice ? 'Activées' : 'Désactivées'}</button></div>
         <div class="row"><label>Profilage<small>FPS, draw calls, triangles, résolution dynamique.</small></label><button class="btn" data-act="perf">${this.showPerf ? 'Affiché' : 'Masqué'}</button></div>
-        <div class="row"><label>Tutoriel<small>Le rejouer à la prochaine nouvelle partie.</small></label><button class="btn" data-act="tut-reset">Réactiver</button></div>
+        <div class="row"><label>Formation<small>La rejouer, guidée par Mara, à la prochaine nouvelle partie.</small></label><button class="btn" data-act="tut-reset">Réactiver</button></div>
         <div class="row"><label>Plein écran</label><button class="btn" data-act="fullscreen">Activer</button></div>
         <div class="row"><label>Journée en cours<small>Ceux qui sont dehors passeront la nuit dehors.</small></label><button class="btn" data-act="endday">Terminer la journée</button><button class="btn ghost" data-act="new">Nouvelle partie</button></div>
       </div></div></div>`;

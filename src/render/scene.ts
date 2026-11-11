@@ -205,8 +205,8 @@ export class Stage {
 
     // dynamic resolution: trade pixels for a stable frame rate
     this.frameAvg += (dt * 1000 - this.frameAvg) * 0.05;
-    if (this.frameAvg > 26 && this.dyn > 0.7) {
-      this.dyn = Math.max(0.7, this.dyn - 0.1);
+    if (this.frameAvg > 30 && this.dyn > 0.8) {
+      this.dyn = Math.max(0.8, this.dyn - 0.05);
       this.frameAvg = 18;
       this.renderer.setPixelRatio(this.q.pixelRatio * this.dyn);
     } else if (this.frameAvg < 13 && this.dyn < 1) {
