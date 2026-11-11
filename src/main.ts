@@ -6,6 +6,7 @@ import { NODE, edgePoints } from './sim/world';
 import { darkness, findPath, previewPath, stormLevel, survivor, survivorPos, zoneOf } from './sim/core';
 import { TICK, endDay, issueOrder, nextDay, resolveChoice, step, validTargets } from './sim/sim';
 import { buyUpgrade, newGame } from './sim/state';
+import { choosePerk } from './sim/perks';
 import { clearSave, loadGame, saveGame } from './sim/save';
 import { getQuality } from './render/quality';
 import { Stage } from './render/scene';
@@ -165,6 +166,14 @@ class Game implements GameApi {
     }
   }
 
+  perk(svId: string, perkId: string) {
+    const sv = survivor(this.s, svId);
+    if (sv && choosePerk(sv, perkId)) {
+      audio.blip();
+      this.save();
+    }
+  }
+
   endDayNow() {
     endDay(this.s, this.ev);
   }
@@ -229,7 +238,10 @@ class Game implements GameApi {
       } else if (e.type === 'order') {
         const sv = survivor(this.s, e.survivor);
         if (sv) this.ui.orderFeedback(sv, e.result);
-      } else if (e.type === 'hit') this.actors.onHit(e.survivor);
+      } else if (e.type === 'hit') {
+        this.actors.onHit(e.survivor);
+        if (e.survivor === this.selected) this.stage.shake(0.5);
+      }
       else if (e.type === 'noise') {
         if (this.s.intel[e.node].seenAt >= this.s.time - 3) this.actors.pulse(e.node);
       } else if (e.type === 'flare') {

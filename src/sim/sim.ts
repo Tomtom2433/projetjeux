@@ -30,12 +30,14 @@ import { onArrive, tickIncidents } from './incidents';
 import { line, lootText, nodeName, recall } from './text';
 import { cryOut, protest, thank, tickBanter, welcome } from './banter';
 import { setupDay, storageCap } from './state';
+import { tickDirector } from './director';
+import { gainXp, hasPerk, levelUp } from './perks';
 import { LAST_DAY, buildEnding, mission, objective, objectiveStatus, type ObjectiveStatus } from './missions';
 
 export const TICK = 0.25;
 
 const armed = (sv: Survivor) => sv.melee || sv.ammo > 0;
-const escorting = (sv: Survivor) => sv.escort.ines || sv.escort.patient || sv.escort.sacha || sv.escort.vogel;
+const escorting = (sv: Survivor) => sv.escort.ines || sv.escort.patient || sv.escort.sacha || sv.escort.vogel || sv.escort.stranger;
 
 function setMode(s: GameState, sv: Survivor, mode: Mode) {
   if (sv.mode === mode) return;
@@ -58,6 +60,7 @@ export function validTargets(s: GameState, sv: Survivor, type: OrderType): NodeI
   if (s.flags.unknownState === 'answered') out.add('apts');
   if (s.incidents.hospital.state === 'pending' || s.persistent.inesLeft) out.add('hosp_in');
   if (s.flags.vogelLocated && s.incidents.vogel.state === 'pending') out.add('lock_e');
+  if (s.flags.strangerAt) out.add(s.flags.strangerAt as NodeId);
   return [...out];
 }
 
@@ -134,8 +137,10 @@ export function issueOrder(s: GameState, svId: string, type: OrderType, target: 
 function speedOf(s: GameState, sv: Survivor): number {
   let v = 1.55 * sv.speed * (1 - sv.fatigue / 260);
   if (stockTotal(sv.carrying) > 0) v *= 0.92;
-  if (sv.escort.patient) v *= 0.55;
-  else if (sv.escort.ines || sv.escort.sacha || sv.escort.vogel) v *= 0.85;
+  const triage = hasPerk(sv, 'triage');
+  if (sv.escort.patient) v *= triage ? 0.78 : 0.55;
+  else if (sv.escort.ines || sv.escort.sacha || sv.escort.vogel || sv.escort.stranger) v *= triage ? 0.96 : 0.85;
+  if (hasPerk(sv, 'runner')) v *= 1.12;
   if (sv.helping && survivor(s, sv.helping)?.carriedBy === sv.id) v *= 0.6;
   if (sv.mode === 'flee') v *= 1.35;
   if (sv.health < 40 && sv.mode !== 'flee') v *= 0.8;
@@ -217,11 +222,16 @@ function arriveHome(s: GameState, sv: Survivor, ev: SimEvent[]) {
     people.push('Elias Vogel');
     s.persistent.vogel = 'rescued';
   }
+  if (sv.escort.stranger) {
+    people.push('Un rescapé du quartier');
+    s.resources.supplies = Math.min(cap, s.resources.supplies + 1);
+  }
+  gainXp(s, sv, people.length * 25 + (brought ? 8 : 0));
   for (const p of people) {
     s.rescued.push(p);
     s.rescuedToday.push(p);
   }
-  sv.escort = { ines: false, patient: false, sacha: false, vogel: false };
+  sv.escort = { ines: false, patient: false, sacha: false, vogel: false, stranger: false };
   if (sv.helping) {
     const ally = survivor(s, sv.helping);
     if (ally && ally.carriedBy === sv.id) {
@@ -272,7 +282,7 @@ function runOrder(s: GameState, sv: Survivor, dt: number, ev: SimEvent[]) {
     onArrive(s, sv, ev);
     if (sv.order !== o || o.stage !== 'go' || s.awaiting !== null) return;
     o.stage = 'work';
-    if (o.type === 'scout') sv.work = sv.equipment.includes('Jumelles') ? 4 : 7;
+    if (o.type === 'scout') sv.work = (sv.equipment.includes('Jumelles') ? 4 : 7) * (hasPerk(sv, 'lynx') ? 0.5 : 1);
     else if (o.type === 'retrieve') {
       sv.work = 12;
       say(s, ev, sv, line(s, sv, 'search_start', vars));
@@ -286,6 +296,8 @@ function runOrder(s: GameState, sv: Survivor, dt: number, ev: SimEvent[]) {
   if (o.type === 'scout') {
     perceive(s, sv, true);
     s.flags['scouted_' + target] = true;
+    gainXp(s, sv, 12);
+    if (hasPerk(sv, 'lynx')) for (const n of [target, ...neighbors(target)]) s.intel[n].lootKnown = true;
     const n = Math.round(believedThreat(s, sv, target));
     const around = neighbors(target).reduce((a, m) => a + (NODE[m].kind !== 'interior' ? Math.round(believedThreat(s, sv, m)) : 0), 0);
     say(s, ev, sv, line(s, sv, n + around > 0 ? 'scout_threat' : 'scout_clear', { ...vars, n: n + around }));
@@ -306,6 +318,11 @@ function runOrder(s: GameState, sv: Survivor, dt: number, ev: SimEvent[]) {
       }
     s.intel[target].lootKnown = true;
     if (stockTotal(got) > 0) {
+      if (hasPerk(sv, 'scrounger')) {
+        got.supplies++;
+        sv.carrying.supplies++;
+      }
+      gainXp(s, sv, Math.min(20, stockTotal(got) * 6));
       say(s, ev, sv, line(s, sv, 'search_found', { loot: lootText(got) }));
       o.stage = 'return';
     } else {
@@ -325,7 +342,8 @@ function runOrder(s: GameState, sv: Survivor, dt: number, ev: SimEvent[]) {
 
 function pickUp(s: GameState, sv: Survivor, ally: Survivor, ev: SimEvent[]) {
   ally.carriedBy = sv.id;
-  ally.health = Math.max(ally.health, sv.medic ? 30 : 15);
+  ally.health = Math.max(ally.health, hasPerk(sv, 'surehands') ? 50 : sv.medic ? 30 : 15);
+  gainXp(s, sv, 20);
   ally.bleed = 9999;
   sv.helping = ally.id;
   say(s, ev, sv, line(s, sv, 'help_got', { ally: ally.short }));
@@ -390,7 +408,7 @@ function goDown(s: GameState, sv: Survivor, ev: SimEvent[]) {
     s.persistent.vogel = 'lost';
     s.unresolved.push('Elias Vogel est tombé avec son escorte. Son magnétophone tourne encore, quelque part.');
   }
-  sv.escort = { ines: false, patient: false, sacha: false, vogel: false };
+  sv.escort = { ines: false, patient: false, sacha: false, vogel: false, stranger: false };
   systemMsg(s, ev, `${sv.short} ne répond plus. Balise de détresse active : ${nodeName(sv.at)}.`, 'alert');
 }
 
@@ -419,6 +437,8 @@ function encounter(s: GameState, sv: Survivor, prox: Proximity, ev: SimEvent[]) 
       if (th.state === 'dormant') p *= 0.6;
       if (!sv.to && (sv.mode === 'hide' || (sv.mode === 'order' && sv.order?.type === 'hold'))) p *= 0.3;
       if (sv.tactic === 'stealth' && node.kind === 'bridge') p *= 0.3;
+      if (hasPerk(sv, 'shadow')) p *= 0.7;
+      if (s.time < ((s.flags.rainUntil as number) ?? -1)) p *= 0.75;
       if (sv.mode === 'order' && sv.order?.type === 'scout') p *= 0.6;
       if (sv.escort.patient) p *= 1.3;
       if (stockTotal(sv.carrying) > 0) p *= 1.1;
@@ -427,7 +447,7 @@ function encounter(s: GameState, sv: Survivor, prox: Proximity, ev: SimEvent[]) 
         th.state = 'hunt';
         th.target = sv.id;
         th.timer = 0;
-        sv.fear = clamp(sv.fear + 24 * (1 - sv.courage / 200));
+        sv.fear = clamp(sv.fear + 24 * (1 - sv.courage / 200) * (hasPerk(sv, 'calm') ? 0.7 : 1));
         say(s, ev, sv, line(s, sv, 'spotted', { node: node.name }), 'alert');
       }
       continue;
@@ -435,7 +455,7 @@ function encounter(s: GameState, sv: Survivor, prox: Proximity, ev: SimEvent[]) 
     if (th.target !== sv.id) continue;
     // The pack is on them.
     if (rnd(s) < Math.min(0.4, 0.1 + 0.05 * th.size)) {
-      sv.health -= 4 + rnd(s) * 8;
+      sv.health -= (4 + rnd(s) * 8) * (hasPerk(sv, 'thick') ? 0.7 : 1);
       sv.fear = clamp(sv.fear + 8);
       ev.push({ type: 'hit', survivor: sv.id });
       if (sv.order) shiftTrust(sv, -1);
@@ -448,13 +468,14 @@ function encounter(s: GameState, sv: Survivor, prox: Proximity, ev: SimEvent[]) 
     }
     let killChance = 0;
     if (sv.ammo > 0 && (sv.mode === 'fight' || sv.health < 60 || escorting(sv))) {
-      killChance = 0.5;
+      killChance = hasPerk(sv, 'marksman') ? 0.72 : 0.5;
       sv.ammo--;
       noise(s, ev, here, 0.6);
-    } else if (sv.melee) killChance = sv.mode === 'fight' ? 0.3 : 0.15;
+    } else if (sv.melee) killChance = (sv.mode === 'fight' ? 0.3 : 0.15) * (hasPerk(sv, 'breaker') ? 1.6 : 1);
     else if (sv.mode === 'fight') killChance = 0.06;
     if (rnd(s) < killChance) {
       th.size--;
+      gainXp(s, sv, 4);
       if (th.size <= 0) {
         s.threats = s.threats.filter((t) => t !== th);
         say(s, ev, sv, line(s, sv, 'clear'));
@@ -722,6 +743,8 @@ function vitals(s: GameState, sv: Survivor, dt: number, prox: Proximity) {
     if (!sv.linked) df += 0.22 * calm;
     if (s.survivors.some((o) => o !== sv && o.alive && o.mode !== 'down' && zoneOf(o) === zoneOf(sv))) df -= 0.3;
   }
+  if (df > 0 && hasPerk(sv, 'calm')) df *= 0.7;
+  if (df < 0 && hasPerk(sv, 'steady')) df *= 2;
   sv.fear = clamp(sv.fear + df * dt);
   if (sv.mode === 'rest' && sv.fatigue < 55) setMode(s, sv, sv.order ? 'order' : 'home');
 }
@@ -781,6 +804,8 @@ export function step(s: GameState, dt: number, ev: SimEvent[]) {
   if (second) {
     for (const th of s.threats) th.seen = false;
     tickBanter(s, ev);
+    tickDirector(s, ev);
+    if (s.awaiting !== null) return;
   }
 
   for (const sv of s.survivors) {
@@ -874,7 +899,7 @@ export function endDay(s: GameState, ev: SimEvent[]) {
         s.resources[k] += Math.max(0, put);
         s.delivered[k] += Math.max(0, put);
       }
-      for (const [flag, name] of [['ines', 'Inès Duval'], ['patient', 'le patient de Saint-Roch'], ['sacha', 'Sacha et sa fille'], ['vogel', 'Elias Vogel']] as const)
+      for (const [flag, name] of [['ines', 'Inès Duval'], ['patient', 'le patient de Saint-Roch'], ['sacha', 'Sacha et sa fille'], ['vogel', 'Elias Vogel'], ['stranger', 'Un rescapé du quartier']] as const)
         if (sv.escort[flag]) {
           s.rescued.push(name);
           s.rescuedToday.push(name);
@@ -901,7 +926,18 @@ export function endDay(s: GameState, ev: SimEvent[]) {
   if (s.flags.unknownState === 'answered') s.unresolved.push('Tanneurs : vous avez promis d’envoyer quelqu’un. Personne n’est venu.');
   if (s.flags.unknownState === 'proof' || s.incidents.unknown.state === 'active') s.unresolved.push('Immeuble des Tanneurs : un appel resté sans réponse.');
   if (s.day >= LAST_DAY && s.flags.final === 'stay' && obj.done) s.persistent.finalDone = true;
+  // experience: everyone alive learns from the day, more if it went well
+  const xp: Record<string, number> = {};
+  const levelUps: string[] = [];
+  for (const sv of s.survivors) {
+    if (!sv.alive) continue;
+    gainXp(s, sv, 8 + (obj.done ? 15 : 0));
+    xp[sv.id] = (s.flags['xp_' + sv.id] as number) ?? 0;
+    if (levelUp(sv) > 0) levelUps.push(`${sv.short} passe niveau ${sv.level}`);
+  }
   buildDebrief(s, nightNotes, obj, title);
+  s.debrief!.xp = xp;
+  s.debrief!.levelUps = levelUps;
   s.phase = 'debrief';
   ev.push({ type: 'phase' });
 }
@@ -973,6 +1009,8 @@ function buildDebrief(s: GameState, notes: string[], obj: ObjectiveStatus, title
     gained: { ...s.delivered },
     consequences: c,
     unresolved: [...new Set(s.unresolved)],
+    xp: {},
+    levelUps: [],
   };
 }
 

@@ -41,6 +41,12 @@ Glisser pour déplacer la caméra, pincer ou molette pour zoomer, mini-carte pou
   5. *Dernier signal* — partir par le bateau ou rester à l'antenne. Épilogue selon tout ce qui a précédé.
 - **Script vivant** : répliques par personnage, ton selon la confiance, rappels de mémoire
   (« J'avais dit non pour le checkpoint. Vous insistez. »), échanges entre survivants qui font bouger leurs relations.
+- **Directeur d'événements** (`src/sim/director.ts`) : une petite IA de rythme lit la tension de la mission et
+  injecte un événement pour relancer ou soulager — meute en marche, parasites radio, façade effondrée, alarme de
+  voiture, averse, sac abandonné, inconnu qui appelle à l'aide. Déterministe, hors-ligne, sans script.
+- **Progression** (`src/sim/perks.ts`) : expérience par action, niveaux, et une compétence à choisir par niveau
+  parmi quatre propres à chaque survivant.
+- **Tutoriel** guidé sur le premier jour, rejouable depuis les réglages.
 - **Abri** : antenne, infirmerie, générateur, réserve (2 niveaux chacun, visibles dans la cour).
 - **Débrief** : pertes, secourus, butin, conséquences, signaux non résolus.
 - **Sauvegarde locale** automatique (`localStorage`), simulation déterministe par graine.

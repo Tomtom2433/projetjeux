@@ -4,7 +4,7 @@ import { NODE, NODES } from './world';
 import { emptyStock, pushRadio, rnd } from './core';
 import { mission } from './missions';
 
-export const SAVE_VERSION = 4;
+export const SAVE_VERSION = 5;
 export const MISSION_DURATION = 600;
 
 function makeSurvivor(p: Partial<Survivor> & Pick<Survivor, 'id' | 'name' | 'short' | 'role' | 'color'>): Survivor {
@@ -26,6 +26,10 @@ function makeSurvivor(p: Partial<Survivor> & Pick<Survivor, 'id' | 'name' | 'sho
     medic: false,
     relations: {},
     memory: [],
+    xp: 0,
+    level: 1,
+    perkPoints: 0,
+    perks: [],
     at: 'shelter',
     to: null,
     progress: 0,
@@ -36,7 +40,7 @@ function makeSurvivor(p: Partial<Survivor> & Pick<Survivor, 'id' | 'name' | 'sho
     work: 0,
     think: 0,
     carrying: emptyStock(),
-    escort: { ines: false, patient: false, sacha: false, vogel: false },
+    escort: { ines: false, patient: false, sacha: false, vogel: false, stranger: false },
     tactic: null,
     helping: null,
     carriedBy: null,
@@ -164,7 +168,7 @@ export function setupDay(s: GameState, ev: SimEvent[]) {
       pendingOrder: null,
       work: 0,
       carrying: emptyStock(),
-      escort: { ines: false, patient: false, sacha: false, vogel: false },
+      escort: { ines: false, patient: false, sacha: false, vogel: false, stranger: false },
       tactic: null,
       helping: null,
       carriedBy: null,
@@ -175,6 +179,7 @@ export function setupDay(s: GameState, ev: SimEvent[]) {
       outbox: [],
     });
     sv.lastReport = { x: NODE.shelter.x, z: NODE.shelter.z, node: 'shelter', time: 0, mode: 'idle' };
+    if (sv.perks.includes('marksman')) sv.ammo = Math.max(sv.ammo, 4);
   }
 
   s.intel = {};
@@ -192,6 +197,7 @@ export function setupDay(s: GameState, ev: SimEvent[]) {
 
   s.incidents = {};
   for (const id of ['bridge', 'hospital', 'unknown', 'logbook', 'vogel', 'boat']) s.incidents[id] = { state: m.incidents.includes(id) ? 'pending' : 'resolved' };
+  s.incidents.stranger = { state: 'pending' };
   if (s.day > 1 && s.persistent.inesLeft) s.incidents.hospital = { state: 'pending' };
   s.flags.unknownTruth = rnd(s) < 0.6 ? 'genuine' : 'lure';
   s.flags.unknownState = 'none';

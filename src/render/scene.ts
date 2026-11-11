@@ -27,6 +27,7 @@ export class Stage {
   private fog: THREE.Fog;
   private tmp = new THREE.Vector3();
   private flash = 0;
+  private shakeAmt = 0;
 
   constructor(public canvas: HTMLCanvasElement, public q: Quality) {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: q.antialias, powerPreference: 'high-performance', stencil: false });
@@ -107,10 +108,17 @@ export class Stage {
     this.camera.left = -v.zoom * aspect;
     this.camera.right = v.zoom * aspect;
     const ch = Math.cos(PITCH) * DIST;
-    this.camera.position.set(v.x + Math.sin(YAW) * ch, Math.sin(PITCH) * DIST, v.z + Math.cos(YAW) * ch);
-    this.camera.lookAt(v.x, 0, v.z);
+    const sx = this.shakeAmt ? (Math.random() - 0.5) * this.shakeAmt : 0;
+    const sz = this.shakeAmt ? (Math.random() - 0.5) * this.shakeAmt : 0;
+    this.shakeAmt = this.shakeAmt > 0.02 ? this.shakeAmt * 0.86 : 0;
+    this.camera.position.set(v.x + sx + Math.sin(YAW) * ch, Math.sin(PITCH) * DIST, v.z + sz + Math.cos(YAW) * ch);
+    this.camera.lookAt(v.x + sx, 0, v.z + sz);
     this.camera.updateProjectionMatrix();
     this.camera.updateMatrixWorld();
+  }
+
+  shake(amount: number) {
+    this.shakeAmt = Math.max(this.shakeAmt, amount);
   }
 
   /** dark: 0 dusk → 1 night. storm: 0..1. */

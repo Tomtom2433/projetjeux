@@ -192,6 +192,7 @@ export const NPCS: Record<string, { id: string; name: string; role: string; colo
   'Inès Duval': { id: 'ines', name: 'Inès Duval', role: 'Infirmière · Saint-Roch', color: '#4fa89a', note: 'Tient l’infirmerie. Les soins à l’abri sont plus efficaces.' },
   'le patient de Saint-Roch': { id: 'patient', name: 'Marc Oberlin', role: 'Patient · fracture ouverte', color: '#9aa7ab', note: 'Alité. Il demande chaque soir qui est rentré.' },
   'Sacha et sa fille': { id: 'sacha', name: 'Sacha et Mila', role: 'Rescapés des Tanneurs', color: '#6b5540', note: 'Il répare ce qu’on lui apporte. Elle dessine la carte du quartier.' },
+  'Un rescapé du quartier': { id: 'stranger', name: 'Un rescapé du quartier', role: 'Trouvé caché dans une voiture', color: '#7d8a6a', note: 'Il ne dit pas son nom. Il a partagé sa dernière ration.' },
   'Elias Vogel': { id: 'vogel', name: 'Elias Vogel', role: 'Ancien opérateur d’ECHO-7', color: '#5d5a6e', note: 'Il connaît chaque fréquence. Il évite le regard de Jo.' },
 };
 

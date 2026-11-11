@@ -42,7 +42,8 @@ export function stormLevel(s: GameState): number {
 }
 
 export function signalAt(s: GameState, node: NodeId): number {
-  return clamp01(NODE[node].signal + s.shelter.antenna * 0.12 - stormLevel(s) * 0.3);
+  const burst = s.time < ((s.flags.burstUntil as number) ?? -1) ? 0.25 : 0;
+  return clamp01(NODE[node].signal + s.shelter.antenna * 0.12 - stormLevel(s) * 0.3 - burst);
 }
 
 export function survivorSignal(s: GameState, sv: Survivor): number {

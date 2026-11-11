@@ -133,6 +133,15 @@ export function buildCity(q: Quality): City {
     glow: new THREE.MeshBasicMaterial({ vertexColors: true, toneMapped: false }),
   };
 
+  // trees and bushes lean with the wind (vertex shader, no CPU cost)
+  const wind = { value: 0 };
+  mats.foliage.onBeforeCompile = (shader) => {
+    shader.uniforms.uWind = wind;
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', '#include <common>\nuniform float uWind;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\n  { float h = smoothstep(1.2, 5.5, position.y); float ph = position.x * 0.31 + position.z * 0.27; transformed.x += sin(uWind * 1.3 + ph) * 0.11 * h; transformed.z += cos(uWind * 1.1 + ph * 1.3) * 0.08 * h; }');
+  };
+
   // ------------------------------------------------------------ ground & canal
   const tex = makeGroundTextures(q.groundTex);
   const groundMat = new THREE.MeshStandardMaterial({ map: tex.map, roughnessMap: tex.rough, roughness: 1, metalness: 0.08 });
@@ -594,6 +603,24 @@ export function buildCity(q: Quality): City {
     }
   }
 
+  // smoke: a few soft puffs rising from each fire
+  const smokeTex = makeGlow();
+  const puffs: { m: THREE.Mesh; x: number; z: number; t: number; bus: boolean }[] = [];
+  const puffGeo = new THREE.PlaneGeometry(1, 1);
+  const addSmoke = (x: number, z: number, n: number, bus: boolean) => {
+    for (let i = 0; i < n; i++) {
+      const m = new THREE.Mesh(puffGeo, new THREE.MeshBasicMaterial({ map: smokeTex, color: 0x2a2a2e, transparent: true, opacity: 0, depthWrite: false }));
+      m.rotation.set(-0.7, Math.PI / 4, 0, 'YXZ');
+      m.renderOrder = 2;
+      root.add(m);
+      puffs.push({ m, x, z, t: i / n, bus });
+    }
+  };
+  addSmoke(-41, 21.5, 4, false);
+  addSmoke(44.6, 31.2, 3, false);
+  addSmoke(4.2, -0.3, 6, true);
+  let busOn = false;
+
   const flareLight = glow(34, 9, 34, 0xff5a3a, 0, 'steady', 0, 60);
   // the bus burns on the days the bridge is cut
   const busFire = [glow(4.2, 0.2, -0.3, 0xff6a1a, 0, 'flicker', 1, 17), glow(4.2, 3.4, -0.3, 0xffb040, 0, 'flicker', 4, 7, true), glow(2.4, 3.1, 2.4, 0xff8a2a, 0, 'flicker', 7, 5, true)];
@@ -871,12 +898,24 @@ export function buildCity(q: Quality): City {
     },
     setBusFire(on) {
       busFire.forEach((g, i) => (g.base = on ? (i === 0 ? 1.3 : 1) : 0));
+      busOn = on;
     },
     flare(x, z) {
       flareLight.mesh.position.set(x, 0.2, z);
       flareT = 0;
     },
     update(t, dark, storm) {
+      wind.value = t * (1 + storm * 1.8);
+      for (const p of puffs) {
+        const k = (p.t + t * (p.bus ? 0.11 : 0.16)) % 1;
+        const show = !p.bus || busOn;
+        p.m.visible = show;
+        if (!show) continue;
+        const rise = p.bus ? 9 : 5;
+        p.m.position.set(p.x + k * (1.5 + storm * 3) + Math.sin(k * 9 + p.t * 20) * 0.3, 1.4 + k * rise, p.z + k * 1.2);
+        p.m.scale.setScalar((p.bus ? 2.2 : 1) * (0.7 + k * 2.4));
+        (p.m.material as THREE.MeshBasicMaterial).opacity = Math.sin(k * Math.PI) * (p.bus ? 0.5 : 0.3);
+      }
       waterNormal.offset.y = t * 0.012;
       waterNormal.offset.x = Math.sin(t * 0.2) * 0.02;
       const night = 0.45 + dark * 0.75;

@@ -5,6 +5,7 @@ import { LINK_THRESHOLD, pathLength, signalAt, stockTotal, stormLevel, survivorS
 import { canEndDay, validTargets } from '../sim/sim';
 import { UPGRADES, storageCap, upgradeBlocker } from '../sim/state';
 import { LAST_DAY, mission, objectiveStatus } from '../sim/missions';
+import { LEVELS, PERKS, levelProgress, perkOffer } from '../sim/perks';
 import { MODE_LABEL, NPCS, ORDER_LABEL, fmtClock, fmtTime, nodeName } from '../sim/text';
 import { storedTier, storeTier, type Tier } from '../render/quality';
 import { audio } from './audio';
@@ -29,6 +30,7 @@ export interface GameApi {
   cancelOrder(): void;
   choose(choiceId: string): void;
   buy(key: keyof Shelter): void;
+  perk(svId: string, perkId: string): void;
   endDayNow(): void;
   nextDay(): void;
   newGame(): void;
@@ -243,6 +245,7 @@ export class Ui {
       case 'cancel': g.cancelOrder(); break;
       case 'choice': g.choose(arg); break;
       case 'buy': g.buy(arg as keyof Shelter); this.render(); break;
+      case 'perk': g.perk(arg.split(':')[0], arg.split(':')[1]); this.render(); break;
       case 'pause': g.togglePause(); break;
       case 'speed': g.cycleSpeed(); break;
       case 'endday': g.endDayNow(); break;
@@ -342,7 +345,7 @@ export class Ui {
     this.now = t;
     this.edges();
     this.tutorial.frame(this.g.started && this.screen === null && s.phase === 'running' && s.awaiting === null);
-    this.el.rain.style.opacity = String(stormLevel(s) * 0.9);
+    this.el.rain.style.opacity = String(Math.max(stormLevel(s) * 0.9, s.time < ((s.flags.rainUntil as number) ?? -1) ? 0.45 : 0));
     const portraitMode = window.innerHeight > window.innerWidth * 1.15 && window.innerWidth < 700;
     this.el.rotate.hidden = !portraitMode || this.rotateDismissed;
     this.wave(t);
@@ -395,7 +398,7 @@ export class Ui {
           const fl = this.flash.get(sv.id);
           const fcls = fl && fl.until > this.now ? fl.cls : '';
           return `<button class="chip ${fcls} ${g.selected === sv.id ? 'sel' : ''} ${sv.alive ? '' : 'dead'}" style="--c:${sv.color}" data-act="select" data-arg="${sv.id}">
-            <span class="av">${portrait(sv.id, sv.color, moodOf(sv))}</span><b>${sv.short}</b>${sv.alive ? bars(survivorSignal(s, sv)) : '<span></span>'}
+            <span class="av">${portrait(sv.id, sv.color, moodOf(sv))}</span><b>${sv.short}${sv.perkPoints > 0 ? ' <u>★</u>' : ''}</b>${sv.alive ? bars(survivorSignal(s, sv)) : '<span></span>'}
             <span class="st ${cls}">${st}</span>
             <span class="meters"><span class="mw"><em>♥</em><span class="meter hp"><i style="width:${sv.health.toFixed(0)}%"></i></span></span><span class="mw"><em>ϟ</em><span class="meter fear"><i style="width:${sv.fear.toFixed(0)}%"></i></span></span><span class="mw"><em>☾</em><span class="meter fat"><i style="width:${sv.fatigue.toFixed(0)}%"></i></span></span></span>
           </button>`;
@@ -638,6 +641,7 @@ export class Ui {
           <div><h4>Secourus</h4>${list(d.rescues, 'Personne.')}</div>
           <div><h4>Rapporté à l’abri</h4><ul><li>${d.gained.medicine} médicaments</li><li>${d.gained.supplies} rations</li><li>${d.gained.parts} pièces</li></ul></div>
           <div><h4>Signaux non résolus</h4>${list(d.unresolved, 'Aucun. La fréquence est silencieuse.')}</div>
+          <div style="grid-column:1/-1"><h4>Progression</h4><div class="xprow">${s.survivors.filter((v) => v.alive).map((v) => `<div class="xp ${v.perkPoints > 0 ? 'up' : ''}" style="--c:${v.color}"><b>${v.short}</b><span>Niv. ${v.level}${d.xp?.[v.id] ? ` · +${d.xp[v.id]} XP` : ''}</span><span class="meter"><i style="width:${Math.round(levelProgress(v) * 100)}%"></i></span>${v.perkPoints > 0 ? '<em>★ compétence à choisir dans Équipe</em>' : ''}</div>`).join('')}</div></div>
           <div style="grid-column:1/-1"><h4>Conséquences</h4>${list(d.consequences, '—')}</div>
         </div></div>
         <div class="actions"><button class="btn" data-act="open" data-arg="roster">${ICON.team} Équipe</button><button class="btn" data-act="open" data-arg="shelter">${ICON.home} Abri</button><button class="btn ghost" data-act="new">Nouvelle partie</button>${alive || d.day >= LAST_DAY ? `<button class="btn primary" data-act="nextday">${d.day >= LAST_DAY ? 'Épilogue' : 'Jour suivant'}</button>` : ''}</div></div>`;
@@ -677,7 +681,9 @@ export class Ui {
       .join('');
     const gear = [...sv.equipment.map((e) => (e === 'Pistolet' ? `Pistolet (${sv.ammo})` : e))];
     return `<div class="card ${sv.alive ? '' : 'dead'}"><div class="head"><div class="portrait">${portrait(sv.id, sv.color, moodOf(sv))}</div><div><h3>${sv.name}</h3><div class="role">${sv.role} · ${sv.alive ? MODE_LABEL[sv.mode] : sv.missing ? 'Disparu·e' : 'Mort·e'}</div></div></div>
-      <div class="pills">${sv.traits.map((t) => `<span class="pill">${t}</span>`).join('')}</div>
+      <div class="pills">${sv.traits.map((t) => `<span class="pill">${t}</span>`).join('')}${sv.perks.map((id) => `<span class="pill perk" title="${PERKS[sv.id]?.find((p) => p.id === id)?.desc ?? ''}">★ ${PERKS[sv.id]?.find((p) => p.id === id)?.name ?? id}</span>`).join('')}</div>
+      <div class="lvl"><b>Niv. ${sv.level}</b><span class="meter"><i style="width:${Math.round(levelProgress(sv) * 100)}%"></i></span><small>${LEVELS[sv.level] !== undefined ? `${sv.xp}/${LEVELS[sv.level]} XP` : 'max'}</small></div>
+      ${sv.alive && sv.perkPoints > 0 ? `<div class="offer"><h4>★ Nouvelle compétence</h4>${perkOffer(sv).map((p) => `<button class="choice" data-act="perk" data-arg="${sv.id}:${p.id}"><b>${p.name}</b><small>${p.desc}</small></button>`).join('')}</div>` : ''}
       ${stat('Santé', sv.health, 'hp')}${stat('Stress', sv.fear, 'fear')}${stat('Fatigue', sv.fatigue, 'fat')}${stat('Courage', sv.courage, 'hp')}${stat('Confiance', sv.trust, 'hp')}
       <h4>Équipement</h4><div class="pills">${gear.map((e) => `<span class="pill">${e}</span>`).join('')}</div>
       <h4>Relations</h4><div class="pills">${rel}</div>

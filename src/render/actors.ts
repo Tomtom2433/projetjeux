@@ -124,6 +124,7 @@ const NPC_LOOKS: Look[] = [
   { jacket: 0x6b5540, hat: 0x3a2f28, pack: 0x4a3f33 }, // Sacha
   { jacket: 0xb5483a, hood: 0x8a3429, scale: 0.6 }, // his daughter
   { jacket: 0x5d5a6e, pants: 0x34323c, hair: 0xb9b4ac, pack: 0x1c1f24 }, // Vogel and his tape recorder
+  { jacket: 0x7d8a6a, pants: 0x3b3a34, hair: 0x4a3526, hunched: false }, // the stranger
 ];
 
 interface SurvivorView {
@@ -141,6 +142,8 @@ interface SurvivorView {
   heading: number;
   walk: number;
   hit: number;
+  fall: number;
+  phase: number;
 }
 
 const hash = (n: number) => {
@@ -151,7 +154,12 @@ const hash = (n: number) => {
 export class Actors {
   root = new THREE.Group();
   private views = new Map<string, SurvivorView>();
-  private infected: THREE.InstancedMesh;
+  private infected!: THREE.InstancedMesh;
+  private hordeLegs!: THREE.InstancedMesh;
+  private hordeArms!: THREE.InstancedMesh;
+  private hordeParts!: FigureParts;
+  private limb = new THREE.Object3D();
+  private base = new THREE.Matrix4();
   private threatPosCache = new Map<number, { x: number; z: number }>();
   private rings: THREE.Mesh[] = [];
   private routeMesh: THREE.Mesh;
@@ -169,13 +177,20 @@ export class Actors {
   constructor(private stage: Stage, private city: City, private labels: HTMLElement, s: GameState) {
     const scene = this.root;
     stage.scene.add(this.root);
-    // infected (one draw call for the whole horde)
+    // infected: three draw calls for the whole horde (bodies, legs, arms), limbs animated per instance
     const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1 });
-    this.infected = new THREE.InstancedMesh(figureGeo({ jacket: 0x4f5a4a, pants: 0x2c2f2c, skin: 0x8f9a86, hunched: true }), mat, 48);
-    this.infected.castShadow = stage.q.shadows;
-    this.infected.frustumCulled = false;
-    this.infected.count = 0;
-    scene.add(this.infected);
+    this.hordeParts = figureParts({ jacket: 0x4f5a4a, pants: 0x2c2f2c, skin: 0x8f9a86, hunched: true });
+    const inst = (g: THREE.BufferGeometry, n: number) => {
+      const m = new THREE.InstancedMesh(g, mat, n);
+      m.castShadow = stage.q.shadows;
+      m.frustumCulled = false;
+      m.count = 0;
+      scene.add(m);
+      return m;
+    };
+    this.infected = inst(this.hordeParts.core, 48);
+    this.hordeLegs = inst(this.hordeParts.leg, 96);
+    this.hordeArms = inst(this.hordeParts.arm, 96);
 
     // target rings
     const ringGeo = new THREE.RingGeometry(2.1, 2.7, 28).rotateX(-Math.PI / 2);
@@ -277,7 +292,7 @@ export class Actors {
     tag.style.setProperty('--c', sv.color);
     this.labels.appendChild(tag);
     const p = survivorPos(sv);
-    this.views.set(sv.id, { group, body, mat, limbs, size, ring, crate, followers, tag, x: p.x, z: p.z, heading: 0, walk: 0, hit: 0 });
+    this.views.set(sv.id, { group, body, mat, limbs, size, ring, crate, followers, tag, x: p.x, z: p.z, heading: 0, walk: 0, hit: 0, fall: 0, phase: this.views.size * 2.1 });
   }
 
   /** Where the operator believes the survivor is. */
@@ -412,7 +427,12 @@ export class Actors {
         v.z += dz * k;
       }
       const moving = dist > 0.08 && sv.linked;
-      if (moving) v.heading = Math.atan2(dx, dz);
+      if (moving) {
+        // turn toward the direction of travel instead of snapping
+        let d = Math.atan2(dx, dz) - v.heading;
+        d = Math.atan2(Math.sin(d), Math.cos(d));
+        v.heading += d * Math.min(1, dt * 9);
+      }
       v.walk += dt * (moving ? (sv.mode === 'flee' ? 13 : 8.5) : 0);
       const inside = NODE[p.node].kind === 'interior' && !p.moving && dist < 1.5;
       if (inside) (occupied[p.node] ??= []).push(sv.short);
@@ -432,14 +452,19 @@ export class Actors {
         if (c) v.heading = c.heading + Math.PI / 2;
       }
       const lunge = fighting ? Math.max(0, Math.sin(t * 13 + v.walk)) : 0;
+      // falling and getting up are eased; a hit makes the body recoil
+      v.fall += ((down ? 1 : 0) - v.fall) * Math.min(1, dt * (down ? 5 : 3));
+      const idle = !moving && !down && !fighting && !searching;
+      if (idle && !observing && !carried) v.heading += Math.sin(t * 0.45 + v.phase) * dt * 0.25; // looking around
       v.body.rotation.set(
-        down ? -1.45 : searching ? 0.55 + Math.sin(t * 6) * 0.12 : fighting ? 0.2 + lunge * 0.3 : moving ? 0.12 : 0,
+        -1.45 * v.fall + (down ? 0 : searching ? 0.55 + Math.sin(t * 6) * 0.12 : fighting ? 0.2 + lunge * 0.3 : moving ? 0.12 : 0) - v.hit * 0.4,
         v.heading,
         moving ? Math.sin(v.walk) * 0.07 : fighting ? Math.sin(t * 9) * 0.12 : 0,
         'YXZ',
       );
-      v.body.position.set(Math.sin(v.heading) * lunge * 0.35, carried ? 2.25 : down ? 0.35 : moving ? Math.abs(Math.sin(v.walk)) * 0.14 : 0, Math.cos(v.heading) * lunge * 0.35);
-      v.body.scale.set(v.size, v.size * (crouch ? 0.7 : resting ? 0.62 : searching ? 0.86 : 1), v.size);
+      v.body.position.set(Math.sin(v.heading) * (lunge * 0.35 - v.hit * 0.3), carried ? 2.25 : 0.35 * v.fall + (moving ? Math.abs(Math.sin(v.walk)) * 0.14 : 0), Math.cos(v.heading) * (lunge * 0.35 - v.hit * 0.3));
+      const breath = idle ? 1 + Math.sin(t * 2.1 + v.phase) * 0.014 : 1;
+      v.body.scale.set(v.size, v.size * breath * (crouch ? 0.7 : resting ? 0.62 : searching ? 0.86 : 1), v.size);
       // limbs: stride, reach, guard
       const stride = moving ? Math.sin(v.walk) * (sv.mode === 'flee' ? 0.95 : 0.65) : 0;
       const carrying = stockTotal(sv.carrying) > 0 || !!(sv.helping && s.survivors.some((o) => o.carriedBy === sv.id));
@@ -477,7 +502,7 @@ export class Actors {
       v.crate.rotation.y = v.heading;
 
       // escorted civilians trail behind
-      const flags = [sv.escort.ines, sv.escort.patient, sv.escort.sacha, sv.escort.sacha, sv.escort.vogel];
+      const flags = [sv.escort.ines, sv.escort.patient, sv.escort.sacha, sv.escort.sacha, sv.escort.vogel, sv.escort.stranger];
       let rank = 0;
       v.followers.forEach((f, i) => {
         f.visible = flags[i] && !inside && sv.linked;
@@ -545,15 +570,34 @@ export class Actors {
         const a = hash(th.id * 13 + i) * 6.283;
         const rad = 0.9 + hash(th.id * 7 + i * 3) * 2.2;
         const sway = Math.sin(t * (1.2 + hash(i + th.id) * 1.5) + i);
-        this.dummy.position.set(c.x + Math.cos(a) * rad + sway * 0.15, 0, c.z + Math.sin(a) * rad);
-        this.dummy.rotation.set(0.22 + sway * 0.05, th.to ? p.heading : a + sway * 0.4, sway * 0.09, 'YXZ');
-        this.dummy.scale.setScalar(0.92 + hash(i * 5 + th.id) * 0.18);
+        const hunting = th.state === 'hunt';
+        const pace = (hunting ? 7 : 3.2) * (0.8 + hash(i * 3 + th.id) * 0.5);
+        const stepA = Math.sin(t * pace + i * 1.7) * (th.to || hunting ? 0.6 : 0.12);
+        this.dummy.position.set(c.x + Math.cos(a) * rad + sway * 0.15, Math.abs(stepA) * 0.08, c.z + Math.sin(a) * rad);
+        this.dummy.rotation.set(0.24 + sway * 0.06 + (hunting ? 0.12 : 0), th.to ? p.heading + sway * 0.15 : a + sway * 0.4, sway * 0.1, 'YXZ');
+        this.dummy.scale.setScalar(1.3 * (0.92 + hash(i * 5 + th.id) * 0.18));
         this.dummy.updateMatrix();
-        this.infected.setMatrixAt(n++, this.dummy.matrix);
+        this.infected.setMatrixAt(n, this.dummy.matrix);
+        const P = this.hordeParts;
+        for (const side of [-1, 1]) {
+          const k2 = n * 2 + (side < 0 ? 0 : 1);
+          this.limb.position.set(side * P.hipX, P.hipY, 0);
+          this.limb.rotation.set(side * stepA - 0.2, 0, 0); // dragging gait
+          this.limb.updateMatrix();
+          this.hordeLegs.setMatrixAt(k2, this.base.multiplyMatrices(this.dummy.matrix, this.limb.matrix));
+          this.limb.position.set(side * P.shoulderX, P.shoulderY, 0.1);
+          this.limb.rotation.set(-1.15 - (hunting ? 0.45 : 0) + Math.sin(t * pace * 0.5 + i + side) * 0.18, 0, side * 0.12);
+          this.limb.updateMatrix();
+          this.hordeArms.setMatrixAt(k2, this.base.multiplyMatrices(this.dummy.matrix, this.limb.matrix));
+        }
+        n++;
       }
     }
     this.infected.count = n;
+    this.hordeLegs.count = this.hordeArms.count = n * 2;
     this.infected.instanceMatrix.needsUpdate = true;
+    this.hordeLegs.instanceMatrix.needsUpdate = true;
+    this.hordeArms.instanceMatrix.needsUpdate = true;
 
     // ---------------- node rings + tags
     const goals = objectiveStatus(s).nodes;

@@ -1,6 +1,7 @@
 // The three branching incidents of the mission.
 // A choice only sets up the situation; the simulation resolves what follows.
 import type { Choice, GameState, SimEvent, Survivor } from './types';
+import { meetStranger } from './director';
 import { clamp, pushRadio, remember, rnd, say, shiftTrust, survivor, survivorSignal, systemMsg, zoneOf } from './core';
 
 function raise(s: GameState, ev: SimEvent[], incident: string, sv: Survivor | null, text: string, choices: Choice[]) {
@@ -28,6 +29,10 @@ export function onArrive(s: GameState, sv: Survivor, ev: SimEvent[]) {
   }
   if (sv.at === 'hosp_in' && s.incidents.hospital.state === 'pending') triggerHospital(s, sv, ev);
   if (sv.at === 'apts' && s.flags.unknownState === 'answered') resolveUnknownSite(s, sv, ev);
+  if (s.flags.strangerAt && sv.at === s.flags.strangerAt) {
+    s.flags.strangerAt = '';
+    meetStranger(s, sv, ev);
+  }
   if (sv.at === 'garage' && s.incidents.logbook.state === 'pending') triggerLogbook(s, sv, ev);
   if (sv.at === 'lock_e' && s.incidents.vogel.state === 'pending' && s.flags.vogelLocated) triggerVogel(s, sv, ev);
 }
@@ -433,6 +438,18 @@ export function resolveChoice(s: GameState, choiceId: string, ev: SimEvent[]): b
       break;
     case 'vogel':
       if (sv) applyVogel(s, sv, choiceId, ev);
+      break;
+    case 'stranger':
+      if (choiceId === 'help') {
+        s.incidents.stranger = { state: 'pending', choice: 'help' };
+        s.flags.strangerAt = s.flags.strangerNode as string;
+        systemMsg(s, ev, 'Vous lui avez dit de tenir. Ordre Secourir disponible sur sa position.');
+      } else {
+        s.incidents.stranger = { state: 'resolved', choice: 'ignore' };
+        s.unresolved.push('Un inconnu appelait depuis une voiture. Vous avez coupé.');
+        const mara = survivor(s, 'mara');
+        if (mara?.alive) shiftTrust(mara, -3);
+      }
       break;
     case 'boat':
       s.incidents.boat = { state: 'resolved', choice: choiceId };

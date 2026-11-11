@@ -82,6 +82,10 @@ export interface Survivor {
   medic: boolean;
   relations: Record<string, number>;
   memory: MemoryEntry[];
+  xp: number;
+  level: number;
+  perkPoints: number;
+  perks: string[];
 
   at: NodeId;
   to: NodeId | null;
@@ -94,7 +98,7 @@ export interface Survivor {
   work: number;
   think: number;
   carrying: Stock;
-  escort: { ines: boolean; patient: boolean; sacha: boolean; vogel: boolean };
+  escort: { ines: boolean; patient: boolean; sacha: boolean; vogel: boolean; stranger: boolean };
   tactic: 'stealth' | 'detour' | null;
   helping: string | null;
   carriedBy: string | null;
@@ -167,6 +171,9 @@ export interface Debrief {
   gained: Stock;
   consequences: string[];
   unresolved: string[];
+  /** Experience earned today, and who gained a level. */
+  xp: Record<string, number>;
+  levelUps: string[];
 }
 
 export interface GameState {
