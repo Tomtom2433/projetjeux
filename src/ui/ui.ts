@@ -4,7 +4,7 @@ import { NODE, NODES, EDGES, CANAL } from '../sim/world';
 import { LINK_THRESHOLD, pathLength, signalAt, stockTotal, stormLevel, survivorSignal, zoneOf, darkness } from '../sim/core';
 import { canEndDay, validTargets } from '../sim/sim';
 import { UPGRADES, storageCap, upgradeBlocker } from '../sim/state';
-import { MODE_LABEL, ORDER_LABEL, fmtClock, fmtTime, nodeName } from '../sim/text';
+import { MODE_LABEL, NPCS, ORDER_LABEL, fmtClock, fmtTime, nodeName } from '../sim/text';
 import { storedTier, storeTier, type Tier } from '../render/quality';
 import { audio } from './audio';
 
@@ -78,7 +78,7 @@ export interface Mood {
 
 const moodOf = (sv: Survivor): Mood => ({ hurt: sv.health < 55, afraid: sv.fear > 60 || sv.mode === 'flee', lost: sv.alive && !sv.linked, dead: !sv.alive });
 
-const SKIN: Record<string, string> = { mara: '#c48d69', jo: '#d6ab8b', lena: '#e8c6aa' };
+const SKIN: Record<string, string> = { mara: '#c48d69', jo: '#d6ab8b', lena: '#e8c6aa', ines: '#b98562', patient: '#d9c2ae', sacha: '#cfa07e', vogel: '#d2b7a0' };
 
 /** Hand-drawn SVG busts. The face reacts to the survivor's state. */
 function portrait(id: string, color = '#3fe0c5', mood: Mood = {}): string {
@@ -91,16 +91,24 @@ function portrait(id: string, color = '#3fe0c5', mood: Mood = {}): string {
   const back: Record<string, string> = {
     mara: '<path d="M65 28c9 4 11 17 6 29l-6-8z" fill="#2b1d16"/>',
     jo: '',
+    ines: '<circle cx="50" cy="15" r="7.5" fill="#241a14"/>',
     lena: `<path d="M24 56C19 28 32 11 50 11s31 17 26 45c-2 8-6 13-11 15H35c-5-2-9-7-11-15z" fill="${color}"/><path d="M24 56C19 28 32 11 50 11s31 17 26 45c-2 8-6 13-11 15H35c-5-2-9-7-11-15z" fill="#000" opacity=".38"/>`,
   };
   const hair: Record<string, string> = {
     mara: '<path d="M33 39c-3-17 6-26 17-26s20 9 17 26c-3-9-7-13-17-14-10 1-14 5-17 14z" fill="#2b1d16"/><path d="M38 31.5l5 1.5" stroke="#8a5a45" stroke-width="1.1" stroke-linecap="round"/>',
     jo: '<path d="M35 46c1 13 7 19 15 19s14-6 15-19c-3 6-8 8-15 8s-12-2-15-8z" fill="#6a6258"/><path d="M31.5 35c0-13 8-21 18.5-21S68.5 22 68.5 35c-6-3-12-4-18.5-4s-12.5 1-18.5 4z" fill="#37424c"/><path d="M31.5 31.5c6-2.5 12-3.5 18.5-3.5s12.5 1 18.5 3.5v4c-6-3-12-4-18.5-4s-12.5 1-18.5 4z" fill="#232b32"/>',
+    ines: '<path d="M33 39c-3-17 6-25 17-25s20 8 17 25c-4-8-8-11-17-11s-13 3-17 11z" fill="#241a14"/><path d="M36 60q14 10 28 0v6q-14 9-28 0z" fill="#dfeeee" opacity=".9"/>',
+    patient: '<path d="M34 34c1-11 8-17 16-17s15 6 16 17c-5-5-10-6-16-6s-11 1-16 6z" fill="#77706a"/><path d="M36 48c2 9 7 13 14 13s12-4 14-13c-3 4-8 5-14 5s-11-1-14-5z" fill="#8a837c" opacity=".55"/>',
+    sacha: '<path d="M35 46c1 13 7 19 15 19s14-6 15-19c-3 6-8 8-15 8s-12-2-15-8z" fill="#4a3526"/><path d="M29 33c2-12 10-18 21-18s19 6 21 18c-7-3-14-4-21-4s-14 1-21 4z" fill="#3a2f28"/><rect x="27" y="31" width="46" height="4" rx="2" fill="#2a221d"/>',
+    vogel: '<path d="M33 37c0-13 8-20 17-20s17 7 17 20c-3-7-6-10-8-11-5 3-13 3-18 0-2 1-5 4-8 11z" fill="#b9b4ac"/><g fill="none" stroke="#1c1f24" stroke-width="1.6"><circle cx="43" cy="39.5" r="5"/><circle cx="57" cy="39.5" r="5"/><path d="M48 39.5h4"/></g><path d="M38 50c2 8 6 12 12 12s10-4 12-12c-3 3-7 4-12 4s-9-1-12-4z" fill="#b9b4ac" opacity=".6"/>',
     lena: '<path d="M33.5 37c1-13 8-19 16.5-19s15.5 6 16.5 19c-4-7-9-10-13-10-2 3-6 5-11 5-4 0-7 2-9 5z" fill="#c9a25a"/><path d="M33.5 36c-2 6-2 13 0 19l3-9zM66.5 36c2 6 2 13 0 19l-3-9z" fill="#b8914d"/><g fill="#a9775a" opacity=".55"><circle cx="43" cy="45" r=".7"/><circle cx="45.5" cy="46.5" r=".7"/><circle cx="55" cy="46.5" r=".7"/><circle cx="57.5" cy="45" r=".7"/></g>',
   };
   const gear: Record<string, string> = {
     mara: '<rect x="18" y="80" width="13" height="13" rx="2" fill="#e9e4d8"/><path d="M24.5 82.5v8M20.5 86.5h8" stroke="#2fae90" stroke-width="2.6"/>',
     jo: '<path d="M17 88l15-15 4.5 3.5L20 93zM83 88 68 73l-4.5 3.5L80 93z" fill="#eceadb" opacity=".85"/>',
+    ines: '<path d="M40 68l10 14 10-14" fill="none" stroke="#e9f4f2" stroke-width="2"/><rect x="62" y="82" width="12" height="9" rx="1.5" fill="#e9f4f2"/>',
+    sacha: '<path d="M30 74l-6 26M70 74l6 26" stroke="#2a221d" stroke-width="3.5"/>',
+    vogel: '<path d="M30 60q20-12 40 0" fill="none" stroke="#1c1f24" stroke-width="3"/><rect x="26" y="56" width="7" height="12" rx="3" fill="#1c1f24"/><rect x="67" y="56" width="7" height="12" rx="3" fill="#1c1f24"/>',
     lena: '<path d="M39 69l16 31" stroke="#1c1f24" stroke-width="2.4"/><rect x="50" y="88" width="13" height="8" rx="2" fill="#1c1f24"/>',
   };
   const brows = mood.afraid ? '<path d="M38.5 36l8-3M61.5 36l-8-3"' : mood.hurt ? '<path d="M38.5 33.5l8 1.5M61.5 33.5l-8 1.5"' : '<path d="M38.5 34.5l8-.5M61.5 34.5l-8-.5"';
@@ -615,7 +623,7 @@ export class Ui {
       </div></div>`;
     } else if (this.screen === 'roster') {
       html = `<div class="sheet">${head('Équipe', `Jour ${s.day}`)}<div class="body"><div class="cards">${s.survivors.map((sv) => this.card(sv)).join('')}</div>
-        ${s.rescued.length ? `<p style="color:var(--dim);margin:10px 0 0;font-size:11.5px">À l’abri grâce à vous : ${[...new Set(s.rescued)].join(', ')}.</p>` : ''}</div></div>`;
+        ${s.rescued.length ? `<h4 class="sec">À l’abri grâce à vous</h4><div class="npcs">${[...new Set(s.rescued)].map((n) => NPCS[n]).filter(Boolean).map((n) => `<div class="npc"><div class="portrait">${portrait(n.id, n.color, { hurt: n.id === 'patient' })}</div><div><b>${n.name}</b><small>${n.role}</small><p>${n.note}</p></div></div>`).join('')}</div>` : ''}</div></div>`;
     } else if (this.screen === 'shelter') {
       const cap = storageCap(s);
       html = `<div class="sheet">${head('ECHO-7 · abri', 'Les améliorations sont permanentes')}<div class="body">

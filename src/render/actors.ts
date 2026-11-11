@@ -30,20 +30,67 @@ function colored(g: THREE.BufferGeometry, hex: number): THREE.BufferGeometry {
   return ng;
 }
 
-function figureGeo(jacket: number, pants: number, skin: number, pack: number | null, hunched = false): THREE.BufferGeometry {
+interface Look {
+  jacket: number;
+  pants?: number;
+  skin?: number;
+  pack?: number | null;
+  hunched?: boolean;
+  hair?: number;
+  ponytail?: boolean;
+  hat?: number;
+  hood?: number;
+  /** Shoulder width multiplier. */
+  wide?: number;
+  stripes?: boolean;
+  tool?: boolean;
+  satchel?: number;
+  scale?: number;
+}
+
+/** One merged, vertex-coloured mesh per character: a single draw call each. */
+function figureGeo(l: Look): THREE.BufferGeometry {
+  const pants = l.pants ?? 0x2a2e33;
+  const skin = l.skin ?? 0xd0a988;
+  const w = l.wide ?? 1;
+  const hz = l.hunched ? 0.08 : 0;
+  const box = (bw: number, bh: number, bd: number, x: number, y: number, z: number, c: number) => colored(new THREE.BoxGeometry(bw, bh, bd).translate(x, y, z), c);
   const parts = [
-    colored(new THREE.BoxGeometry(0.22, 0.85, 0.3).translate(-0.15, 0.43, 0), pants),
-    colored(new THREE.BoxGeometry(0.22, 0.85, 0.3).translate(0.15, 0.43, 0), pants),
-    colored(new THREE.BoxGeometry(0.66, 0.78, 0.4).translate(0, 1.24, hunched ? 0.08 : 0), jacket),
-    colored(new THREE.BoxGeometry(0.2, 0.7, 0.24).translate(-0.44, 1.24, hunched ? 0.25 : 0), jacket),
-    colored(new THREE.BoxGeometry(0.2, 0.7, 0.24).translate(0.44, 1.24, hunched ? 0.25 : 0), jacket),
-    colored(new THREE.SphereGeometry(0.25, 8, 6).translate(0, 1.86, hunched ? 0.16 : 0), skin),
+    box(0.22, 0.85, 0.3, -0.15 * w, 0.43, 0, pants),
+    box(0.22, 0.85, 0.3, 0.15 * w, 0.43, 0, pants),
+    box(0.66 * w, 0.78, 0.4, 0, 1.24, hz, l.jacket),
+    box(0.2, 0.7, 0.24, -0.44 * w, 1.24, l.hunched ? 0.25 : 0, l.jacket),
+    box(0.2, 0.7, 0.24, 0.44 * w, 1.24, l.hunched ? 0.25 : 0, l.jacket),
+    colored(new THREE.SphereGeometry(0.25, 8, 6).translate(0, 1.86, l.hunched ? 0.16 : 0), skin),
   ];
-  if (pack !== null) parts.push(colored(new THREE.BoxGeometry(0.5, 0.6, 0.26).translate(0, 1.3, -0.32), pack));
+  if (l.hair !== undefined) parts.push(box(0.46, 0.2, 0.46, 0, 2.02, -0.03, l.hair), box(0.46, 0.34, 0.14, 0, 1.86, -0.2, l.hair));
+  if (l.ponytail) parts.push(box(0.14, 0.42, 0.14, 0, 1.72, -0.34, l.hair ?? 0x2b1d16));
+  if (l.hat !== undefined) parts.push(box(0.52, 0.24, 0.52, 0, 2.04, 0, l.hat), box(0.54, 0.08, 0.54, 0, 1.93, 0, 0x1c2227));
+  if (l.hood !== undefined) parts.push(box(0.6, 0.5, 0.5, 0, 1.92, -0.1, l.hood), box(0.5, 0.2, 0.36, 0, 1.6, -0.12, l.hood));
+  if (l.pack !== undefined && l.pack !== null) parts.push(box(0.5 * w, 0.62, 0.28, 0, 1.3, -0.33, l.pack));
+  if (l.stripes) parts.push(box(0.68 * w, 0.09, 0.42, 0, 1.42, hz, 0xe8e6d8), box(0.68 * w, 0.09, 0.42, 0, 1.08, hz, 0xe8e6d8));
+  if (l.tool) parts.push(colored(new THREE.BoxGeometry(0.07, 1.05, 0.07).rotateZ(0.6).translate(0.05, 1.45, -0.5), 0x8d9296));
+  if (l.satchel !== undefined) parts.push(box(0.14, 0.34, 0.4, 0.42 * w, 0.95, 0, l.satchel), colored(new THREE.BoxGeometry(0.06, 0.06, 0.2).translate(0.5 * w, 0.98, 0), 0x2fae90));
   const g = mergeGeometries(parts)!;
-  g.scale(1.3, 1.3, 1.3);
+  const sc = 1.3 * (l.scale ?? 1);
+  g.scale(sc, sc, sc);
   return g;
 }
+
+function survivorLook(id: string, jacket: number): Look {
+  const dark = new THREE.Color(jacket).multiplyScalar(0.62).getHex();
+  if (id === 'mara') return { jacket, hair: 0x2b1d16, ponytail: true, satchel: 0xe9e4d8, skin: 0xc48d69 };
+  if (id === 'jo') return { jacket, wide: 1.22, hat: 0x37424c, pack: 0x7a6a3a, stripes: true, tool: true, pants: 0x3a3f36, scale: 1.04 };
+  if (id === 'lena') return { jacket, hood: dark, pack: 0x3d4a3a, scale: 0.9, skin: 0xe8c6aa, pants: 0x30343c };
+  return { jacket, pack: 0x3d4a3a };
+}
+
+const NPC_LOOKS: Look[] = [
+  { jacket: 0x4fa89a, pants: 0x3f8a7e, hair: 0x241a14 }, // Inès, scrubs
+  { jacket: 0xb9c2c4, pants: 0x8f9aa0, hunched: true, hair: 0x6a6258 }, // the patient
+  { jacket: 0x6b5540, hat: 0x3a2f28, pack: 0x4a3f33 }, // Sacha
+  { jacket: 0xb5483a, hood: 0x8a3429, scale: 0.6 }, // his daughter
+];
 
 interface SurvivorView {
   group: THREE.Group;
@@ -80,14 +127,14 @@ export class Actors {
   private pulses: { mesh: THREE.Mesh; t: number }[] = [];
   private dummy = new THREE.Object3D();
   private selRing: THREE.Mesh;
-  private npcGeo = figureGeo(0x8fa3a0, 0x3a3f45, 0xc9a58a, null);
+  private npcGeos = NPC_LOOKS.map((l) => figureGeo(l));
 
   constructor(private stage: Stage, private city: City, private labels: HTMLElement, s: GameState) {
     const scene = this.root;
     stage.scene.add(this.root);
     // infected (one draw call for the whole horde)
     const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 1 });
-    this.infected = new THREE.InstancedMesh(figureGeo(0x4f5a4a, 0x2c2f2c, 0x8f9a86, null, true), mat, 48);
+    this.infected = new THREE.InstancedMesh(figureGeo({ jacket: 0x4f5a4a, pants: 0x2c2f2c, skin: 0x8f9a86, hunched: true }), mat, 48);
     this.infected.castShadow = stage.q.shadows;
     this.infected.frustumCulled = false;
     this.infected.count = 0;
@@ -146,7 +193,7 @@ export class Actors {
 
   private addSurvivor(sv: Survivor) {
     const col = new THREE.Color(sv.color).getHex();
-    const body = new THREE.Mesh(figureGeo(col, 0x2a2e33, 0xd0a988, 0x3d4a3a), new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85, transparent: true }));
+    const body = new THREE.Mesh(figureGeo(survivorLook(sv.id, col)), new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.85, transparent: true }));
     body.castShadow = this.stage.q.shadows;
     const ring = new THREE.Mesh(new THREE.RingGeometry(0.75, 1.05, 20).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.9, depthTest: false, toneMapped: false }));
     ring.position.y = 0.12;
@@ -157,9 +204,8 @@ export class Actors {
     const group = new THREE.Group();
     group.add(body, ring, crate);
     const followers: THREE.Mesh[] = [];
-    for (let i = 0; i < 3; i++) {
-      const f = new THREE.Mesh(this.npcGeo, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9 }));
-      f.scale.setScalar(i === 2 ? 0.7 : 0.95);
+    for (let i = 0; i < 4; i++) {
+      const f = new THREE.Mesh(this.npcGeos[i], new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.9 }));
       f.visible = false;
       this.root.add(f);
       followers.push(f);
@@ -312,29 +358,52 @@ export class Actors {
       v.group.visible = !inside;
       v.group.position.set(v.x, 0, v.z);
       const down = sv.mode === 'down';
+      const carried = down && !!sv.carriedBy;
+      const working = sv.mode === 'order' && sv.order?.stage === 'work' && !sv.to;
+      const observing = working && sv.order?.type === 'scout';
+      const searching = working && sv.order?.type !== 'scout';
+      const fighting = sv.mode === 'fight' && sv.linked;
+      const resting = sv.mode === 'rest';
       const crouch = sv.mode === 'hide' || (sv.mode === 'order' && sv.order?.type === 'hold' && !sv.to);
-      v.body.rotation.set(down ? -1.45 : moving ? 0.12 : 0, v.heading, moving ? Math.sin(v.walk) * 0.07 : 0, 'YXZ');
-      v.body.position.y = down ? 0.35 : moving ? Math.abs(Math.sin(v.walk)) * 0.14 : 0;
-      v.body.scale.y = crouch ? 0.68 : 1;
+      if (observing) v.heading += dt * 1.1; // sweeping the street
+      if (carried) {
+        const c = this.views.get(sv.carriedBy!);
+        if (c) v.heading = c.heading + Math.PI / 2;
+      }
+      const lunge = fighting ? Math.max(0, Math.sin(t * 13 + v.walk)) : 0;
+      v.body.rotation.set(
+        down ? -1.45 : searching ? 0.55 + Math.sin(t * 6) * 0.12 : fighting ? 0.2 + lunge * 0.3 : moving ? 0.12 : 0,
+        v.heading,
+        moving ? Math.sin(v.walk) * 0.07 : fighting ? Math.sin(t * 9) * 0.12 : 0,
+        'YXZ',
+      );
+      v.body.position.set(Math.sin(v.heading) * lunge * 0.35, carried ? 2.25 : down ? 0.35 : moving ? Math.abs(Math.sin(v.walk)) * 0.14 : 0, Math.cos(v.heading) * lunge * 0.35);
+      v.body.scale.y = crouch ? 0.68 : resting ? 0.6 : searching ? 0.85 : 1;
+      v.ring.visible = !carried;
       const mat = v.body.material as THREE.MeshStandardMaterial;
       mat.opacity = sv.linked ? 1 : 0.38;
       v.hit = Math.max(0, v.hit - dt * 2.5);
       mat.emissive.setRGB(v.hit * 0.9, 0, 0);
       const ringMat = v.ring.material as THREE.MeshBasicMaterial;
       ringMat.opacity = sv.linked ? 0.9 : 0.35 + Math.sin(t * 4) * 0.15;
+      ringMat.color.set(fighting || (sv.mode === 'flee' && sv.linked) ? (Math.sin(t * 10) > 0 ? '#ff5a45' : sv.color) : sv.color);
       v.ring.scale.setScalar(1 + (ui.selected === sv.id ? Math.sin(t * 5) * 0.06 : 0));
       v.crate.visible = stockTotal(sv.carrying) > 0 && !down;
       v.crate.rotation.y = v.heading;
 
       // escorted civilians trail behind
-      const flags = [sv.escort.ines || sv.escort.sacha, sv.escort.patient, sv.escort.sacha];
+      const flags = [sv.escort.ines, sv.escort.patient, sv.escort.sacha, sv.escort.sacha];
+      let rank = 0;
       v.followers.forEach((f, i) => {
         f.visible = flags[i] && !inside && sv.linked;
         if (!f.visible) return;
-        const back = 1.6 + i * 1.3;
-        f.position.set(v.x - Math.sin(v.heading) * back + (i - 1) * 0.5, 0, v.z - Math.cos(v.heading) * back);
-        f.rotation.y = v.heading;
-        f.position.y = moving ? Math.abs(Math.sin(v.walk + i)) * 0.1 : 0;
+        // the patient leans on Inès; the child keeps close to her father
+        const back = 1.5 + rank * 1.2;
+        const side = i === 1 ? 0.55 : i === 3 ? -0.6 : 0;
+        if (i !== 1 && i !== 3) rank++;
+        f.position.set(v.x - Math.sin(v.heading) * back + Math.cos(v.heading) * side, 0, v.z - Math.cos(v.heading) * back - Math.sin(v.heading) * side);
+        f.rotation.set(i === 1 ? 0.25 : 0, v.heading, i === 1 ? 0.2 : 0, 'YXZ');
+        f.position.y = moving ? Math.abs(Math.sin(v.walk * (i === 3 ? 1.5 : 1) + i)) * 0.1 : 0;
       });
 
       // tag
