@@ -76,12 +76,14 @@ button { font: inherit; color: inherit; background: none; border: 0; cursor: poi
 .btn[disabled] { opacity: 0.4; pointer-events: none; }
 @keyframes pulse { 50% { box-shadow: 0 0 0 4px rgba(167, 139, 250, 0.25); } }
 
-#team { position: absolute; left: calc(8px + var(--sl)); top: calc(70px + var(--st)); display: flex; flex-direction: column; gap: 5px; width: 158px; }
-.chip { text-align: left; padding: 6px 8px 6px 10px; border-radius: 8px; background: var(--bg); border: 1px solid var(--line); border-left: 3px solid var(--c); display: grid; grid-template-columns: 1fr auto; gap: 1px 6px; }
+#team { position: absolute; left: calc(8px + var(--sl)); top: calc(70px + var(--st)); display: flex; flex-direction: column; gap: 5px; width: 172px; }
+.chip { text-align: left; padding: 6px 8px 6px 7px; border-radius: 8px; background: var(--bg); border: 1px solid var(--line); border-left: 3px solid var(--c); display: grid; grid-template-columns: 30px 1fr auto; gap: 1px 7px; align-items: center; }
+.chip .av { grid-row: 1 / span 2; width: 30px; height: 30px; border-radius: 6px; overflow: hidden; }
+.chip .av svg { width: 100%; height: 100%; display: block; }
 .chip.sel { border-color: var(--teal); border-left-color: var(--c); background: rgba(16, 34, 36, 0.86); }
 .chip.dead { opacity: 0.4; }
 .chip b { font-size: 12px; }
-.chip .st { font-size: 10px; color: var(--dim); grid-column: 1 / -1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.chip .st { font-size: 10px; color: var(--dim); grid-column: 2 / -1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .chip .st.danger { color: var(--danger); }
 .chip .st.lost { color: var(--warn); }
 .chip .meters { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; margin-top: 3px; }
@@ -210,7 +212,9 @@ button { font: inherit; color: inherit; background: none; border: 0; cursor: poi
 /* phones in landscape: short screens */
 @media (max-height: 460px) {
   html, body { font-size: 12px; }
-  #team { top: calc(58px + var(--st)); width: 138px; gap: 4px; }
+  #team { top: calc(58px + var(--st)); width: 154px; gap: 4px; }
+  .chip { grid-template-columns: 26px 1fr auto; }
+  .chip .av { width: 26px; height: 26px; }
   .chip { padding: 4px 7px 5px 8px; }
   #status { padding: 5px 8px; gap: 8px; }
   .obj-line { max-width: 130px; font-size: 10px; }

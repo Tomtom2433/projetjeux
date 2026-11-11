@@ -68,18 +68,66 @@ function bars(sig: number): string {
   return h + '</span>';
 }
 
-function portrait(id: string, color = '#3fe0c5'): string {
-  const scan = `<g opacity=".16" stroke="#fff" stroke-width=".6">${Array.from({ length: 16 }, (_, i) => `<path d="M0 ${i * 6.4 + 2}h100"/>`).join('')}</g>`;
+export interface Mood {
+  hurt?: boolean;
+  afraid?: boolean;
+  lost?: boolean;
+  dead?: boolean;
+}
+
+const moodOf = (sv: Survivor): Mood => ({ hurt: sv.health < 55, afraid: sv.fear > 60 || sv.mode === 'flee', lost: sv.alive && !sv.linked, dead: !sv.alive });
+
+const SKIN: Record<string, string> = { mara: '#c48d69', jo: '#d6ab8b', lena: '#e8c6aa' };
+
+/** Hand-drawn SVG busts. The face reacts to the survivor's state. */
+function portrait(id: string, color = '#3fe0c5', mood: Mood = {}): string {
+  const scan = `<g opacity=".13" stroke="#fff" stroke-width=".6">${Array.from({ length: 16 }, (_, i) => `<path d="M0 ${i * 6.4 + 2}h100"/>`).join('')}</g>`;
   if (id === 'unknown')
-    return `<svg viewBox="0 0 100 100"><rect width="100" height="100" fill="#14121f"/><g fill="#3b3560">${Array.from({ length: 40 }, (_, i) => `<rect x="${(i * 37) % 100}" y="${(i * 53) % 100}" width="${8 + ((i * 7) % 20)}" height="2"/>`).join('')}</g><text x="50" y="66" font-size="52" font-weight="800" text-anchor="middle" fill="#a78bfa" font-family="system-ui">?</text>${scan}</svg>`;
+    return `<svg viewBox="0 0 100 100"><rect width="100" height="100" fill="#14121f"/><g fill="#3b3560">${Array.from({ length: 40 }, (_, i) => `<rect x="${(i * 37) % 100}" y="${(i * 53) % 100}" width="${8 + ((i * 7) % 20)}" height="2"/>`).join('')}</g><path d="M22 100c0-18 12-28 28-28s28 10 28 28z" fill="#2a2546"/><ellipse cx="50" cy="44" rx="15" ry="18" fill="#2a2546"/><text x="50" y="54" font-size="26" font-weight="800" text-anchor="middle" fill="#a78bfa" font-family="system-ui">?</text>${scan}</svg>`;
   if (id === 'echo')
     return `<svg viewBox="0 0 100 100"><rect width="100" height="100" fill="#0f1a1c"/><g fill="none" stroke="#3fe0c5" stroke-width="4" stroke-linecap="round"><path d="M36 40a20 20 0 0 1 28 0"/><path d="M26 30a34 34 0 0 1 48 0" opacity=".5"/><path d="M50 50v32M40 82h20M50 50 40 82M50 50l10 32" stroke="#e9e4d8"/></g><circle cx="50" cy="48" r="5" fill="#a78bfa"/>${scan}</svg>`;
-  const hair: Record<string, string> = {
-    mara: '<path d="M32 40c-2-18 8-26 18-26s20 8 18 26c-3-9-8-13-18-13s-15 4-18 13z" fill="#2b1d16"/><path d="M66 38c4 6 4 16 1 22l-5-6z" fill="#2b1d16"/>',
-    jo: '<path d="M33 36c0-13 8-20 17-20s17 7 17 20c-5-7-10-9-17-9s-12 2-17 9z" fill="#5a5148"/><path d="M36 50c3 10 8 14 14 14s11-4 14-14c-2 4-7 6-14 6s-12-2-14-6z" fill="#4a423a"/>',
-    lena: '<path d="M30 46c-3-22 8-32 20-32s23 10 20 32c-2-12-8-18-20-18s-18 6-20 18z" fill="#c9a25a"/><path d="M30 44c-3 10-2 20 2 28l6-10zM70 44c3 10 2 20-2 28l-6-10z" fill="#c9a25a"/>',
+  const skin = SKIN[id] ?? '#d6ab8b';
+  const back: Record<string, string> = {
+    mara: '<path d="M65 28c9 4 11 17 6 29l-6-8z" fill="#2b1d16"/>',
+    jo: '',
+    lena: `<path d="M24 56C19 28 32 11 50 11s31 17 26 45c-2 8-6 13-11 15H35c-5-2-9-7-11-15z" fill="${color}"/><path d="M24 56C19 28 32 11 50 11s31 17 26 45c-2 8-6 13-11 15H35c-5-2-9-7-11-15z" fill="#000" opacity=".38"/>`,
   };
-  return `<svg viewBox="0 0 100 100"><defs><linearGradient id="pg${id}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#232a36"/><stop offset="1" stop-color="#0d1016"/></linearGradient></defs><rect width="100" height="100" fill="url(#pg${id})"/><path d="M14 100c0-20 14-32 36-32s36 12 36 32z" fill="${color}"/><path d="M40 70h20l-4 12H44z" fill="#0d1016" opacity=".35"/><rect x="44" y="52" width="12" height="18" rx="4" fill="#c79b7c"/><ellipse cx="50" cy="40" rx="16" ry="19" fill="#d6ab8b"/>${hair[id] ?? ''}${scan}</svg>`;
+  const hair: Record<string, string> = {
+    mara: '<path d="M33 39c-3-17 6-26 17-26s20 9 17 26c-3-9-7-13-17-14-10 1-14 5-17 14z" fill="#2b1d16"/><path d="M38 31.5l5 1.5" stroke="#8a5a45" stroke-width="1.1" stroke-linecap="round"/>',
+    jo: '<path d="M35 46c1 13 7 19 15 19s14-6 15-19c-3 6-8 8-15 8s-12-2-15-8z" fill="#6a6258"/><path d="M31.5 35c0-13 8-21 18.5-21S68.5 22 68.5 35c-6-3-12-4-18.5-4s-12.5 1-18.5 4z" fill="#37424c"/><path d="M31.5 31.5c6-2.5 12-3.5 18.5-3.5s12.5 1 18.5 3.5v4c-6-3-12-4-18.5-4s-12.5 1-18.5 4z" fill="#232b32"/>',
+    lena: '<path d="M33.5 37c1-13 8-19 16.5-19s15.5 6 16.5 19c-4-7-9-10-13-10-2 3-6 5-11 5-4 0-7 2-9 5z" fill="#c9a25a"/><path d="M33.5 36c-2 6-2 13 0 19l3-9zM66.5 36c2 6 2 13 0 19l-3-9z" fill="#b8914d"/><g fill="#a9775a" opacity=".55"><circle cx="43" cy="45" r=".7"/><circle cx="45.5" cy="46.5" r=".7"/><circle cx="55" cy="46.5" r=".7"/><circle cx="57.5" cy="45" r=".7"/></g>',
+  };
+  const gear: Record<string, string> = {
+    mara: '<rect x="18" y="80" width="13" height="13" rx="2" fill="#e9e4d8"/><path d="M24.5 82.5v8M20.5 86.5h8" stroke="#2fae90" stroke-width="2.6"/>',
+    jo: '<path d="M17 88l15-15 4.5 3.5L20 93zM83 88 68 73l-4.5 3.5L80 93z" fill="#eceadb" opacity=".85"/>',
+    lena: '<path d="M39 69l16 31" stroke="#1c1f24" stroke-width="2.4"/><rect x="50" y="88" width="13" height="8" rx="2" fill="#1c1f24"/>',
+  };
+  const brows = mood.afraid ? '<path d="M38.5 36l8-3M61.5 36l-8-3"' : mood.hurt ? '<path d="M38.5 33.5l8 1.5M61.5 33.5l-8 1.5"' : '<path d="M38.5 34.5l8-.5M61.5 34.5l-8-.5"';
+  const mouth = mood.afraid ? 'M46 54.5q4-1.5 8 0' : mood.hurt ? 'M45 55q5-2.5 10 0' : id === 'jo' ? 'M46 54h8' : 'M45.5 53.5q4.5 2 9 0';
+  const eyeRy = mood.afraid ? 2.4 : mood.hurt ? 1.2 : 1.8;
+  const eyes = [43, 57].map((x) => `<ellipse cx="${x}" cy="39.5" rx="3" ry="${eyeRy}" fill="#f3efe6"/><circle cx="${x}" cy="39.5" r="${Math.min(1.5, eyeRy)}" fill="#2a2018"/>`).join('');
+  const wounds = mood.hurt ? '<path d="M33.5 27l33 4.5v5l-33-4.5z" fill="#e9e4d8"/><path d="M56 30.5l5 .7v4l-5-.7z" fill="#a8372c" opacity=".8"/><path d="M58 47l4 4M60 46.5l3 3" stroke="#a8372c" stroke-width="1.1" stroke-linecap="round"/>' : '';
+  const sweat = mood.afraid ? '<path d="M36.5 30q-1.5 2.5 0 3.5 1.5-1 0-3.5z" fill="#bfe3ff" opacity=".8"/>' : '';
+  const over = mood.dead
+    ? '<rect width="100" height="100" fill="#06070a" opacity=".68"/><path d="M36 36l28 28M64 36 36 64" stroke="#ff6b57" stroke-width="5" stroke-linecap="round" opacity=".85"/>'
+    : mood.lost
+      ? `<rect width="100" height="100" fill="#1a1d26" opacity=".5"/><g fill="#cfd6e4" opacity=".3">${Array.from({ length: 9 }, (_, i) => `<rect x="${(i * 41) % 70}" y="${8 + i * 10.5}" width="${22 + ((i * 17) % 40)}" height="${1.5 + (i % 3)}"/>`).join('')}</g>`
+      : '';
+  return `<svg viewBox="0 0 100 100"><defs><linearGradient id="pg${id}" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#2a3342"/><stop offset="1" stop-color="#0c0f15"/></linearGradient></defs>
+    <rect width="100" height="100" fill="url(#pg${id})"/><circle cx="24" cy="22" r="34" fill="#ffb27a" opacity=".1"/>
+    ${back[id] ?? ''}
+    <path d="M12 100c0-21 15-33 38-33s38 12 38 33z" fill="${color}"/><path d="M50 67c23 0 38 12 38 33H50z" fill="#000" opacity=".2"/>
+    <path d="M40 68l10 10 10-10-3-3H43z" fill="#000" opacity=".35"/>
+    ${gear[id] ?? ''}
+    <path d="M44 54h12v13l-6 6-6-6z" fill="${skin}"/><path d="M44 58q6 5 12 0v-4H44z" fill="#000" opacity=".22"/>
+    <ellipse cx="33.5" cy="41" rx="2.6" ry="4.5" fill="${skin}"/><ellipse cx="66.5" cy="41" rx="2.6" ry="4.5" fill="${skin}"/>
+    <path d="M34 38c0-13 7-21 16-21s16 8 16 21c0 12-6 23-16 23S34 50 34 38z" fill="${skin}"/>
+    <path d="M50 17c9 0 16 8 16 21 0 12-6 23-16 23z" fill="#000" opacity=".13"/>
+    ${eyes}${brows} stroke="#2a2018" stroke-width="1.7" stroke-linecap="round" fill="none"/>
+    <path d="M50 41v6.5l-2.5 1.5" stroke="#000" stroke-opacity=".3" stroke-width="1.2" fill="none" stroke-linecap="round"/>
+    ${hair[id] ?? ''}
+    <path d="${mouth}" stroke="#5a2f28" stroke-width="1.6" fill="none" stroke-linecap="round"/>
+    ${wounds}${sweat}${over}${scan}</svg>`;
 }
 
 /** Signal loss eats characters. Deterministic per message. */
@@ -278,7 +326,7 @@ export class Ui {
           const st = !sv.alive ? (sv.missing ? 'Disparu·e' : 'Mort·e') : !sv.linked ? `Signal perdu · ${fmtTime(s.time - sv.lastReport.time)}` : sv.mode === 'order' && sv.order ? `${sv.order.stage === 'return' ? 'Retour' : ORDER_LABEL[sv.order.type]}${sv.order.target && sv.order.stage !== 'return' && sv.order.type !== 'retreat' ? ' · ' + nodeName(sv.order.target) : ''}` : `${MODE_LABEL[sv.mode]} · ${nodeName(zoneOf(sv))}`;
           const cls = !sv.alive ? '' : !sv.linked ? 'lost' : ['flee', 'down', 'fight'].includes(sv.mode) ? 'danger' : '';
           return `<button class="chip ${g.selected === sv.id ? 'sel' : ''} ${sv.alive ? '' : 'dead'}" style="--c:${sv.color}" data-act="select" data-arg="${sv.id}">
-            <b>${sv.short}</b>${sv.alive ? bars(survivorSignal(s, sv)) : ''}
+            <span class="av">${portrait(sv.id, sv.color, moodOf(sv))}</span><b>${sv.short}</b>${sv.alive ? bars(survivorSignal(s, sv)) : '<span></span>'}
             <span class="st ${cls}">${st}</span>
             <span class="meters"><span class="meter hp"><i style="width:${sv.health.toFixed(0)}%"></i></span><span class="meter fear"><i style="width:${sv.fear.toFixed(0)}%"></i></span><span class="meter fat"><i style="width:${sv.fatigue.toFixed(0)}%"></i></span></span>
           </button>`;
@@ -477,7 +525,7 @@ export class Ui {
       const sv = m ? s.survivors.find((v) => v.id === m.from) : undefined;
       const who = sv ? `<b>${sv.name}</b><small>${sv.role}</small>` : `<b>${m?.fromName ?? 'ECHO-7'}</b><small>${m?.from === 'unknown' ? 'Fréquence non identifiée' : 'Station radio'}</small>`;
       html = `<div class="sheet">${head('Transmission · canal 7', `Jour ${s.day} · ${fmtClock(m?.time ?? s.time)}`, !await_)}<div class="body">
-        ${m ? `<div class="radio"><div class="who"><div class="portrait">${portrait(sv ? sv.id : m.from === 'unknown' ? 'unknown' : 'echo', sv?.color)}</div><div>${who}<div class="sigrow">${bars(m.signal)} ${Math.round(m.signal * 100)} %${m.delayed ? ' · message différé' : ''}</div></div><canvas id="wave" width="300" height="68" data-sig="${m.signal}"></canvas></div>
+        ${m ? `<div class="radio"><div class="who"><div class="portrait">${portrait(sv ? sv.id : m.from === 'unknown' ? 'unknown' : 'echo', sv?.color, sv ? { ...moodOf(sv), lost: m.signal < 0.34 } : {})}</div><div>${who}<div class="sigrow">${bars(m.signal)} ${Math.round(m.signal * 100)} %${m.delayed ? ' · message différé' : ''}</div></div><canvas id="wave" width="300" height="68" data-sig="${m.signal}"></canvas></div>
         <div><p class="msg mono" id="rmsg" data-id="${m.id}" data-act="skip"></p>
         ${await_ ? `<div class="choices">${await_.choices!.map((c) => `<button class="choice" data-act="choice" data-arg="${c.id}"><b>${c.label}</b><small>${c.hint}</small></button>`).join('')}</div>` : ''}</div></div>` : '<p>Aucune transmission.</p>'}
         ${!await_ ? `<h4 style="margin:14px 0 6px;font-size:10px;letter-spacing:.16em;color:var(--dim)">JOURNAL</h4><div class="log">${[...s.radio].reverse().slice(0, 40).map((r) => `<div class="${r.kind}"><time>${fmtClock(r.time)}</time><b>${r.fromName}</b>${r.delayed ? '<em>différé</em>' : ''} — ${garble(r.text, r.signal, r.id)}${r.chosen ? ` <em>→ ${esc(r.choices?.find((c) => c.id === r.chosen)?.label ?? '')}</em>` : ''}</div>`).join('')}</div>` : ''}
@@ -542,7 +590,7 @@ export class Ui {
       })
       .join('');
     const gear = [...sv.equipment.map((e) => (e === 'Pistolet' ? `Pistolet (${sv.ammo})` : e))];
-    return `<div class="card ${sv.alive ? '' : 'dead'}"><div class="head"><div class="portrait">${portrait(sv.id, sv.color)}</div><div><h3>${sv.name}</h3><div class="role">${sv.role} · ${sv.alive ? MODE_LABEL[sv.mode] : sv.missing ? 'Disparu·e' : 'Mort·e'}</div></div></div>
+    return `<div class="card ${sv.alive ? '' : 'dead'}"><div class="head"><div class="portrait">${portrait(sv.id, sv.color, moodOf(sv))}</div><div><h3>${sv.name}</h3><div class="role">${sv.role} · ${sv.alive ? MODE_LABEL[sv.mode] : sv.missing ? 'Disparu·e' : 'Mort·e'}</div></div></div>
       <div class="pills">${sv.traits.map((t) => `<span class="pill">${t}</span>`).join('')}</div>
       ${stat('Santé', sv.health, 'hp')}${stat('Stress', sv.fear, 'fear')}${stat('Fatigue', sv.fatigue, 'fat')}${stat('Courage', sv.courage, 'hp')}${stat('Confiance', sv.trust, 'hp')}
       <h4>Équipement</h4><div class="pills">${gear.map((e) => `<span class="pill">${e}</span>`).join('')}</div>
