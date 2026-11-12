@@ -502,3 +502,12 @@ body.cine #labels, body.cine #edges { display: none; }
 
 .about h4 { margin: 12px 0 3px; font-family: var(--stencil); font-weight: 400; text-transform: uppercase; letter-spacing: 0.08em; font-size: 12px; color: #e0a15a; }
 .about p { margin: 0; font-family: var(--type); font-size: 13px; line-height: 1.5; }
+
+/* tactical items and scalable HUD text */
+#orders .o.item { --oc: #e0a15a; border-style: dashed; }
+#orders .o.item b { font-size: 16px; line-height: 18px; font-weight: 400; }
+#orders .o .cost { font-size: 9px; color: var(--dim); font-weight: 400; }
+#orders .o:disabled { opacity: 0.4; }
+#ticker, #team .chip { zoom: var(--txt); }
+.tag.sv b { font-size: calc(11px * var(--txt)); }
+.tag.sv i, .tag.sv em { font-size: calc(9.5px * var(--txt)); }

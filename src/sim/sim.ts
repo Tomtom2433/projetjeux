@@ -1,4 +1,5 @@
 // LAST SIGNAL — simulation step. Pure logic: no rendering, no DOM, no network.
+import { smoked } from './items';
 import type { GameState, Mode, NodeId, Order, OrderType, SimEvent, Survivor, Threat } from './types';
 import { NODE, neighbors, edgeLength } from './world';
 import {
@@ -470,6 +471,7 @@ function encounter(s: GameState, sv: Survivor, prox: Proximity, ev: SimEvent[]) 
       if (stockTotal(sv.carrying) > 0) p *= 1.1;
       p *= 1 - darkness(s) * 0.2;
       p *= difficulty(s).detect;
+      if (smoked(s, sv)) p *= 0.15;
       if (rnd(s) < p) {
         th.state = 'hunt';
         th.target = sv.id;

@@ -17,6 +17,7 @@ import { audio } from './ui/audio';
 import { Tutorial } from './ui/tutorial';
 import { introScene, nightScene, type Scene } from './sim/scenes';
 import { Cine } from './ui/cine';
+import { useItem, type ItemId } from './sim/items';
 import { watchErrors } from './ui/report';
 
 watchErrors();
@@ -188,6 +189,12 @@ class Game implements GameApi {
     if (!this.selected || !this.orderType || !this.chosen) return;
     queueOrder(this.s, this.selected, this.orderType, this.chosen, this.ev);
     this.cancelOrder();
+  }
+
+  /** Tell the selected survivor to use a tactical item right now. */
+  useItem(id: ItemId) {
+    const sv = this.selected ? survivor(this.s, this.selected) : null;
+    if (sv && useItem(this.s, sv, id, this.ev)) audio.sfx(id === 'decoy' ? 'flare' : 'order');
   }
 
   cancelOrder() {

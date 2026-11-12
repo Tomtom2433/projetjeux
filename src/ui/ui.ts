@@ -11,6 +11,7 @@ import { storedTier, storeTier, type Tier } from '../render/quality';
 import { audio, type Channel } from './audio';
 import { applyPrefs, storedDifficulty, storedSafe, storedText, storeSafe, storeText } from './prefs';
 import { DIFFICULTY } from '../sim/core';
+import { ITEMS, canUseItem, type ItemId } from '../sim/items';
 import { VERSION, buildReport } from './report';
 import { ACHIEVEMENTS, loadProfile } from './profile';
 import { synchro } from '../sim/cover';
@@ -33,6 +34,7 @@ export interface GameApi {
   pickOrder(t: OrderType): void;
   confirmOrder(): void;
   queueOrder(): void;
+  useItem(id: ItemId): void;
   cancelOrder(): void;
   choose(choiceId: string): void;
   buy(key: keyof Shelter): void;
@@ -267,6 +269,7 @@ export class Ui {
       case 'order': g.pickOrder(arg as OrderType); break;
       case 'confirm': g.confirmOrder(); break;
       case 'confirm-next': g.queueOrder(); break;
+      case 'item': g.useItem(arg as ItemId); break;
       case 'tut-next': this.tutorial.next(); break;
       case 'tut-skip': this.tutorial.finish(); g.skipTutorial(); break;
       case 'tut-reset': Tutorial.reset(); this.toast('La formation reviendra à la prochaine nouvelle partie.'); break;
@@ -498,7 +501,10 @@ export class Ui {
             const on = sel.order?.type === t && sel.mode === 'order';
             const apt = t === 'retreat' ? 0 : aptitude(sel, t);
             return `<button class="o ${on ? 'on' : ''}" style="--oc:${ORDER_COLOR[t]}" data-act="order" data-arg="${t}" ${dis ? 'disabled' : ''}>${ICON[t]}${ORDER_LABEL[t]}${apt ? `<span class="apt">${'<i class="on"></i>'.repeat(apt)}${'<i></i>'.repeat(5 - apt)}</span>` : '<span class="apt"></span>'}</button>`;
-          }).join(''),
+          }).join('') +
+            (zoneOf(sel) !== 'shelter'
+              ? (Object.keys(ITEMS) as ItemId[]).map((id) => `<button class="o item" data-act="item" data-arg="${id}" title="${ITEMS[id].hint}" ${canUseItem(s, sel, id) ? '' : 'disabled'}><b>${id === 'decoy' ? '⏰' : '☁'}</b>${ITEMS[id].name}<span class="apt cost">1 ${ITEMS[id].costName}</span></button>`).join('')
+              : ''),
         );
       }
     }

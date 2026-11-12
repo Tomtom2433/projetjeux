@@ -296,3 +296,26 @@ describe('order chaining', () => {
     expect(lena.order?.type).toBe('hold');
   });
 });
+
+import { useItem, smoked } from '../src/sim/items';
+
+describe('tactical items', () => {
+  it('a decoy pulls nearby packs away and costs a part; smoke hides and costs a ration', () => {
+    const s = newGame(5);
+    const ev: SimEvent[] = [];
+    const jo = s.survivors.find((v) => v.id === 'jo')!;
+    expect(useItem(s, jo, 'decoy', ev)).toBe(false); // not from inside the shelter
+    jo.at = 'cross_w';
+    s.threats = [{ id: 1, at: 'bridge_w', to: null, progress: 0, size: 3, state: 'hunt', target: 'jo', goal: null, timer: 0, seen: true }];
+    const parts = s.resources.parts;
+    expect(useItem(s, jo, 'decoy', ev)).toBe(true);
+    expect(s.resources.parts).toBe(parts - 1);
+    expect(s.threats[0].state).toBe('lured');
+    expect(s.threats[0].target).toBeNull();
+    s.threats[0].state = 'hunt';
+    s.threats[0].target = 'jo';
+    expect(useItem(s, jo, 'smoke', ev)).toBe(true);
+    expect(smoked(s, jo)).toBe(true);
+    expect(s.threats[0].target).toBeNull();
+  });
+});

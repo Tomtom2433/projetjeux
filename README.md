@@ -79,6 +79,9 @@ Glisser pour déplacer la caméra, pincer ou molette pour zoomer, mini-carte pou
   rejouée depuis son début, avec d'autres tirages ; pas en Dur.
 - **Ordres enchaînés** : quand un survivant a déjà un ordre, « Ensuite » programme le suivant, transmis dès qu'il
   est libre.
+- **Objets tactiques** (`src/sim/items.ts`) : hors de l'abri, un survivant peut lancer un leurre (1 pièce : les
+  meutes proches se ruent dans la rue voisine) ou un fumigène (1 ration : 25 s presque invisible, la meute qui
+  chasse perd la trace).
 - **Journées variables** : à chaque partie, une cache change de place et une meute peut apparaître ailleurs.
 - **Carnet de l'opérateur** (`src/ui/profile.ts`) : statistiques et 11 succès, conservés entre les parties.
 - **Confort** : taille du texte (3 niveaux), palette d'ordres adaptée au daltonisme, symbole par type d'ordre.
