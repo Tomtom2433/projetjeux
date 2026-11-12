@@ -237,7 +237,7 @@ export class Actors {
     const g = n.gait < 0.15 ? o.gesture ?? 'none' : 'none';
     const w = Math.sin(t * 4.3 + n.walk);
     const pa: [number, number, number, number] =
-      g === 'talk' ? [0.12, 0.4 + w * 0.12, 0.55, 1.25 + Math.sin(t * 5.1) * 0.35] : g === 'point' ? [0.05, 1.42, 0.3, 0.12] : g === 'shrug' ? [0.35, 0.35, 1.15, 1.15] : sitting ? [0.95, 0.95, 0.75, 0.75] : [0, 0, 0.22, 0.22];
+      g === 'talk' ? [0.12, 0.4 + w * 0.12, 0.55, 1.25 + Math.sin(t * 5.1) * 0.35] : g === 'point' ? [0.05, 1.42, 0.3, 0.12] : g === 'shrug' ? [0.35, 0.35, 1.15, 1.15] : sitting ? [0.5, 0.5, 0.55, 0.55] : [0, 0, 0.22, 0.22];
     for (let i = 0; i < 4; i++) n.arm[i] += (pa[i] - n.arm[i]) * Math.min(1, dt * 9);
     n.group.visible = true;
     n.group.position.set(n.x, (0.5 - 0.5 * Math.cos(n.walk * 2)) * 0.08 * Math.min(1, n.gait * 2) - 0.5 * n.sit, n.z);
@@ -681,7 +681,7 @@ export class Actors {
       );
       v.body.position.set(Math.sin(v.heading) * (lunge * 0.35 - v.hit * 0.3), carried ? 2.25 : 0.35 * v.fall + (0.5 - 0.5 * Math.cos(v.walk * 2)) * 0.09 * Math.min(1, v.gait * 2) - (v.rig ? 0.5 * v.sit * (1 - v.fall) : 0), Math.cos(v.heading) * (lunge * 0.35 - v.hit * 0.3));
       const breath = idle ? 1 + Math.sin(t * 2.1 + v.phase) * 0.014 : 1;
-      v.sit += ((crouch || resting ? 1 : searching ? 0.4 : 0) - v.sit) * Math.min(1, dt * 4);
+      v.sit += ((cm && crouch ? 0.7 : crouch || resting ? 1 : searching ? 0.4 : 0) - v.sit) * Math.min(1, dt * 4);
       v.body.scale.set(v.size, v.size * (v.rig ? 1 : breath * (crouch ? 0.7 : resting ? 0.62 : searching ? 0.86 : 1)), v.size);
       // limbs: stride, reach, guard
       const stride = moving ? Math.sin(v.walk) * (sv.mode === 'flee' ? 0.95 : 0.65) : 0;
@@ -733,7 +733,7 @@ export class Actors {
           else if (g === 'point') pa = [0.05, 1.42 + w * 0.04, 0.3, 0.12];
           else if (g === 'shrug') pa = [0.35, 0.35, 1.15 + w * 0.08, 1.15 - w * 0.08];
           else if (g === 'nod') pa = [0.05, 0.05, 0.35, 0.35];
-          else if (crouch) pa = [0.95, 0.95, 0.75 + w * 0.05, 0.75 - w * 0.05]; // hands to the fire
+          else if (crouch) pa = [0.5, 0.5, 0.55, 0.55]; // forearms resting on the knees
         } else if (crouch || resting) pa = [0.55, 0.55, 0.95, 0.95];
         const ka = Math.min(1, dt * 9);
         for (let i = 0; i < 4; i++) v.arm[i] += (pa[i] - v.arm[i]) * ka;

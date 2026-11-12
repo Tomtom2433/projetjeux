@@ -151,17 +151,30 @@ export class Cine {
     };
     const at: Record<string, { x: number; z: number }> = {};
     for (const [id, r] of Object.entries(this.roles)) at[id] = pos(r);
+    // whoever speaks takes a small step toward the person they are talking to
+    if (speaker && to && at[speaker] && at[to]) {
+      const dx = at[to].x - at[speaker].x;
+      const dz = at[to].z - at[speaker].z;
+      const d = Math.hypot(dx, dz);
+      const step = Math.min(0.7, Math.max(0, d - 1.7));
+      if (d > 0.01) at[speaker] = { x: at[speaker].x + (dx / d) * step, z: at[speaker].z + (dz / d) * step };
+    }
+    const others = (id: string) => {
+      const o = Object.keys(at).filter((k) => k !== id);
+      return o.length ? { x: o.reduce((a, k) => a + at[k].x, 0) / o.length, z: o.reduce((a, k) => a + at[k].z, 0) / o.length } : FIRE;
+    };
     const look = (from: { x: number; z: number }, x: number, z: number) => Math.atan2(x - from.x, z - from.z);
     this.marks = {};
     for (const [id, r] of Object.entries(this.roles)) {
       const p = at[id];
       let face = look(p, FIRE.x, FIRE.z);
       if (r.still) face = -Math.PI / 2; // toward the radio room
-      else if (r.away) face += Math.PI * 0.8;
       else if (id === speaker) {
-        if (to && at[to]) face = look(p, at[to].x, at[to].z);
-        else face = face * 0.6 + (Math.PI / 4) * 0.4; // half to the fire, half to the camera
-      } else if (speaker && at[speaker]) face = look(p, at[speaker].x, at[speaker].z);
+        // eyes on the person addressed, or on the group when speaking to everyone
+        const t = to && at[to] ? at[to] : others(id);
+        face = look(p, t.x, t.z);
+      } else if (speaker && at[speaker]) face = look(p, at[speaker].x, at[speaker].z); // everyone else watches the speaker
+      else if (r.away) face += Math.PI * 0.8;
       this.marks[id] = { x: p.x, z: p.z, face, sit: r.sit, gesture: id === speaker ? gesture : 'none' };
     }
     this.actors().setCine(this.marks);
@@ -172,8 +185,7 @@ export class Cine {
     for (const [id, act] of Object.entries(acts ?? {})) {
       const r = this.roles[id];
       if (!r) continue;
-      if (act === 'sit') r.sit = true;
-      else if (act === 'stand') r.sit = false;
+      if (act === 'sit' || act === 'stand') r.sit = false; // everyone stays on their feet: the crouch read badly on screen
       else if (act === 'away') r.away = true;
       else if (act === 'face') r.away = false;
       else if (act === 'step') {
@@ -218,8 +230,9 @@ export class Cine {
     const l = sc.lines[i];
     const narr = l.who === 'narr';
     const act = narr ? undefined : l.acts?.[l.who];
-    if (!narr && this.roles[l.who] && act !== 'away' && act !== 'back') this.roles[l.who].away = false; // you turn round to speak
     this.apply(l.acts);
+    // nobody speaks or is spoken to with their back turned
+    if (!narr) for (const id of [l.who, l.to]) if (id && this.roles[id]) this.roles[id].away = false;
     const gesture: CineMark['gesture'] = narr ? 'none' : act === 'point' || act === 'shrug' || act === 'nod' ? act : 'talk';
     this.layout(narr ? null : l.who, l.to ?? null, gesture);
     this.shot(l.cam ?? 'close', narr ? null : l.who, l.to ?? null);
@@ -279,7 +292,9 @@ export class Cine {
     const p = this.q(narr ? '.c-narr' : '.c-text');
     if (n !== before || p.dataset.i !== String(this.at)) {
       p.dataset.i = String(this.at);
-      p.innerHTML = `${esc(l.text.slice(0, n))}<span>${esc(l.text.slice(n))}</span>`;
+      // reveal whole words: a word is never shown half written
+      const cut = n >= l.text.length ? n : Math.max(0, l.text.lastIndexOf(' ', n));
+      p.innerHTML = `${esc(l.text.slice(0, cut))}<span>${esc(l.text.slice(cut))}</span>`;
     }
     if (narr) return;
     const head = this.actors().headPos(l.who);

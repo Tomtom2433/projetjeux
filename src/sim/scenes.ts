@@ -50,7 +50,7 @@ function cast(s: GameState, title: string, art: string, place: string, mood: Sce
 /** Before anything else: the three of them, and an empty chair at the radio. */
 export function introScene(s: GameState): Scene | null {
   return cast(s, 'Neuf jours sans opérateur', 'shelter', 'ECHO-7, la cour, à la tombée du jour', 'dusk', [
-    N('Le brasero crépite. Lena s’accroupit près des flammes ; Jo reste debout, à l’écart, le dos tourné au poste radio.', { lena: 'sit', jo: 'back' }),
+    N('Le brasero crépite. Lena s’approche des flammes ; Jo reste à l’écart, le dos tourné au poste radio.', { lena: 'step', jo: 'back' }),
     L('jo', 'Neuf jours que le poste est vide. Neuf jours qu’on sort à l’aveugle. Et ce soir, quelqu’un s’assoit dans le fauteuil de Vogel comme si de rien n’était.', 'mara', 'away'),
     L('mara', 'Quelqu’un s’assoit dans un fauteuil vide, Jo. C’est tout ce que c’est pour l’instant.', 'jo'),
     L('lena', 'Il est comment ? Le nouveau. Vous l’avez vu ?', 'mara'),
@@ -74,13 +74,13 @@ export function nightScene(s: GameState): Scene | null {
   switch (s.day) {
     case 0:
       return cast(s, 'Première nuit', 'shelter', 'ECHO-7, autour du brasero', 'night', [
-        N('La nuit est tombée sur la cour. Lena masse sa cheville près du feu ; Jo recharge le brasero.', { lena: 'sit', jo: 'step' }),
+        N('La nuit est tombée sur la cour. Lena se réchauffe près du feu ; Jo recharge le brasero.', { jo: 'step' }),
         L('lena', 'Elle m’a envoyée au carrefour, et elle m’a ramenée. Vogel, il oubliait qu’on était dehors.', 'jo'),
         L('jo', 'Elle t’a ramenée d’une entorse à deux cents mètres du portail. Attends demain avant de lui tresser une couronne.', 'lena', 'shrug'),
         L('mara', 'Demain, c’est Saint-Roch. Il n’y a plus un antibiotique ici, et j’ai trois plaies qui tournent mal.', 'jo', 'point'),
         L('jo', 'Par le pont ?', 'mara', undefined, 'two'),
         L('mara', 'Par où la voix dira. On verra bien ce qu’elle voit.', 'jo', 'shrug'),
-        N('Lena se relève, hésite, puis s’approche de Mara.', { lena: 'step' }),
+        N('Lena hésite, puis s’approche de Mara.', { lena: 'step' }),
         L('lena', 'Mara… si je regarde pendant que quelqu’un avance, il risque moins, non ? C’est ce que j’ai compris aujourd’hui.', 'mara', undefined, 'two'),
         L('mara', 'C’est exactement ça. Un qui regarde, un qui bouge. Retiens-le, et rappelle-le-lui s’il l’oublie.', 'lena', 'nod'),
       ]);
@@ -130,7 +130,7 @@ export function nightScene(s: GameState): Scene | null {
     case 3: {
       const v = p.vogel;
       return cast(s, 'L’homme de l’écluse', 'vogel', 'ECHO-7, sous la fenêtre de la salle radio', 'night', [
-        v === 'rescued' && N('Vogel est assis près du feu, les mains tendues vers les flammes. Jo ne le quitte pas des yeux.', { vogel: 'sit', jo: 'back' }),
+        v === 'rescued' && N('Vogel se tient près du feu, les épaules rentrées. Jo ne le quitte pas des yeux.', { vogel: 'step', jo: 'back' }),
         v !== 'rescued' && N('Le quai est silencieux. Trop. Chacun écoute sans le dire.', { lena: 'sit' }),
         v === 'rescued' && L('vogel', 'Votre opérateur écoute. Moi, je parlais. C’est toute la différence, et il m’a fallu un mois dans une cabane pour la comprendre.', 'mara'),
         v === 'rescued' && L('jo', 'Parle encore une fois de différence et je te montre celle entre un pied-de-biche et une porte.', 'vogel', 'step', 'two'),
@@ -144,7 +144,7 @@ export function nightScene(s: GameState): Scene | null {
         p.joKnows && L('jo', '« Faites du bruit. » Voilà ce qu’il leur a dit. Et la voix, elle, m’a dit qu’il était mort en héros. Deux opérateurs, deux menteurs.', 'mara', 'point', 'two'),
         p.joKnows && L('mara', 'Elle a menti pour t’épargner. Lui, pour se sauver. Ce n’est pas la même faute.', 'jo', 'step'),
         p.joKnows && L('jo', 'C’est le même fauteuil.', undefined, 'back'),
-        N('Un éclair muet, très loin à l’ouest. Lena se lève et regarde le ciel.', { lena: 'stand' }),
+        N('Un éclair muet, très loin à l’ouest. Lena regarde le ciel.', { lena: 'stand' }),
         L('lena', 'Le ciel est jaune à l’ouest. Ça sent la pluie et le métal.', undefined, 'away'),
         L('mara', 'L’orage sera là à l’aube. Et la réserve est vide : demain, on sort quand même.', 'jo'),
         L('jo', 'Alors on sortira trempés. La pluie couvre le bruit des pas, au moins.', 'mara', 'shrug'),
@@ -162,7 +162,7 @@ export function nightScene(s: GameState): Scene | null {
         !open && L('lena', 'Il y a d’autres caves, d’autres gens cachés. Ils ne sauront jamais qu’il est passé.', 'jo', 'away'),
         L('mara', 'Si on monte tous, ECHO-7 se tait. Ceux qui écoutent encore cette fréquence n’entendront plus rien.', 'lena', 'point'),
         L('jo', 'Si on reste, il faut réparer l’amplificateur, et prier pour que quelqu’un réponde.', 'mara', 'shrug'),
-        N('Lena s’accroupit, les bras autour des genoux.', { lena: 'sit' }),
+        N('Lena recule d’un pas, les bras serrés contre elle.', { lena: 'back' }),
         L('lena', 'Moi, je veux partir. Je suis désolée. Je veux partir.', 'mara'),
         L('mara', 'Ne sois pas désolée. C’est la voix qui tranchera. Elle nous a amenés jusqu’ici.', 'lena', 'step', 'two'),
         L('jo', 'Ouais. Pour une fois, je suis curieux de l’entendre.', undefined, 'nod', 'wide'),

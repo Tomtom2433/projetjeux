@@ -536,3 +536,16 @@ body.hud-compact #status .obj-line, body.hud-compact #status .sig:first-child { 
 body.hud-off #topright .res, body.hud-off #topright .btn:not([data-act='hud']):not([data-act='pause']) { display: none; }
 body.hud-off #topright { left: auto; }
 body.hud-off #topright .btn { flex: none; min-width: 44px; }
+
+/* dialogue text never breaks inside a word, and the scene header stays on one line on narrow screens */
+.c-text, .c-narr { word-break: normal; overflow-wrap: normal; hyphens: none; -webkit-hyphens: none; }
+.c-bubble > div:last-child { min-width: 0; }
+.c-top b { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.c-top small { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 0 1 auto; min-width: 0; }
+@media (max-width: 520px) {
+  .c-top { flex-direction: column; align-items: flex-start; justify-content: center; gap: 0; }
+  .c-top b { font-size: 12px; max-width: 100%; }
+  .c-top small { margin-left: 0; font-size: 10px; max-width: 100%; }
+  .c-bubble { max-width: calc(100vw - 16px); }
+  .c-bottom .btn { padding-left: 12px; padding-right: 12px; }
+}
