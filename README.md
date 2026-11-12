@@ -81,7 +81,7 @@ Glisser pour déplacer la caméra, pincer ou molette pour zoomer, mini-carte pou
 - **Objectifs secondaires** (`src/sim/side.ts`) : deux par journée, tirés selon la graine et le jour (personne
   repéré, personne à terre, rentrés une minute avant la nuit, 4 ressources, Synchro ×3). Chacun rapporte
   12 XP à toute l'équipe et une ration.
-- **Aider à la main** (`src/ui/minigames.ts`) : un bouton « Aider » propose un mini-jeu facultatif selon la
+- **Aider à la main** (`src/ui/minigames.ts`, décors `public/art/mg-*.webp`) : un bouton « Aider » propose un mini-jeu facultatif selon la
   situation. Balayage aux jumelles (reconnaissance : toucher les silhouettes rouges, pas les bleues),
   crochetage (fouille : trois crans à saisir), garrot (secours : maintenir puis relâcher dans la zone),
   accord de fréquence (liaison perdue : superposer deux ondes pour rétablir la voix 10 à 30 s). Le résultat
@@ -108,7 +108,10 @@ Glisser pour déplacer la caméra, pincer ou molette pour zoomer, mini-carte pou
 - **Confort** : taille du texte (3 niveaux), palette d'ordres adaptée au daltonisme, symbole par type d'ordre.
 - **Signalement** (`src/ui/report.ts`) : les erreurs restent sur l'appareil ; « Copier le rapport » dans les
   réglages produit un diagnostic à coller dans un message. Écran « À propos » : crédits et confidentialité.
-- **Abri** : antenne, infirmerie, générateur, réserve (2 niveaux chacun, visibles dans la cour).
+- **Abri** : la cour démarre presque nue (table, radio, brasero). Onze objets dispersés dans le quartier
+  (`src/sim/finds.ts`) se repèrent en reconnaissance, se ramènent avec « Récupérer », apparaissent dans la cour
+  et apportent un effet permanent ou débloquent un niveau d'amélioration. S'y ajoutent les quatre améliorations
+  achetées avec les ressources : antenne, infirmerie, générateur, réserve (2 niveaux chacune).
 - **Débrief** : pertes, secourus, butin, conséquences, signaux non résolus.
 - **Sauvegarde locale** automatique (`localStorage`), simulation déterministe par graine.
 - **Voix parlées** en option (Réglages) : synthèse vocale du navigateur, hors-ligne, qualité variable.

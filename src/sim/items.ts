@@ -11,15 +11,18 @@ export const ITEMS: Record<ItemId, { name: string; cost: 'parts' | 'supplies'; c
 };
 
 const SMOKE_TIME = 25;
+/** With a workbench at the shelter, the first decoy of the day costs nothing. */
+export const freeDecoy = (s: GameState, id: ItemId) => id === 'decoy' && !!s.persistent.find_bench && !s.flags.benchUsed;
 export const smoked = (s: GameState, sv: Survivor) => s.time < Number(s.flags['smoke_' + sv.id] ?? -1);
 
 export function canUseItem(s: GameState, sv: Survivor | null | undefined, id: ItemId): boolean {
-  return !!sv && sv.alive && sv.linked && sv.mode !== 'down' && zoneOf(sv) !== 'shelter' && s.resources[ITEMS[id].cost] >= 1 && !(id === 'smoke' && smoked(s, sv));
+  return !!sv && sv.alive && sv.linked && sv.mode !== 'down' && zoneOf(sv) !== 'shelter' && (s.resources[ITEMS[id].cost] >= 1 || freeDecoy(s, id)) && !(id === 'smoke' && smoked(s, sv));
 }
 
 export function useItem(s: GameState, sv: Survivor, id: ItemId, ev: SimEvent[]): boolean {
   if (!canUseItem(s, sv, id)) return false;
-  s.resources[ITEMS[id].cost] -= 1;
+  if (freeDecoy(s, id)) s.flags.benchUsed = true;
+  else s.resources[ITEMS[id].cost] -= 1;
   const here = zoneOf(sv);
   if (id === 'decoy') {
     // thrown away from where the survivor is heading, toward the worst street nearby

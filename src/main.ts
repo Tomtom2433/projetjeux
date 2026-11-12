@@ -17,6 +17,7 @@ import { audio } from './ui/audio';
 import { Tutorial } from './ui/tutorial';
 import { introScene, nightScene, type Scene } from './sim/scenes';
 import { Cine } from './ui/cine';
+import { FINDS } from './sim/finds';
 import { assist, type AssistKind } from './sim/side';
 import { useItem, type ItemId } from './sim/items';
 import { watchErrors } from './ui/report';
@@ -470,6 +471,7 @@ class Game implements GameApi {
     this.stage.update(dt);
     this.stage.setAtmosphere(dark, storm, this.t);
     this.city.setShelter(s.shelter);
+    this.city.setFinds(FINDS.filter((f) => s.persistent['find_' + f.id]).map((f) => f.id));
     this.city.setBusFire(!!s.flags['blk_bridge_mid|bridge_w']);
     this.city.update(this.t, dark, storm);
     this.actors.sync(s, this.uiView, dt, this.t);

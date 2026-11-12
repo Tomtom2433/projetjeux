@@ -66,6 +66,7 @@ export const MANUAL: { title: string; lines: string[] }[] = [
   {
     title: 'L’abri, la nuit, la progression',
     lines: [
+      'L’abri commence presque nu. Onze objets sont dispersés dans le quartier (bâche, groupe électrogène, citerne, poêle, parabole…). Reconnaître un lieu les révèle, <b>Récupérer</b> les ramène, et chacun apporte un effet permanent ou débloque une amélioration.',
       'Les ressources rapportées servent à améliorer l’antenne, l’infirmerie, le générateur et la réserve.',
       'Chaque nuit consomme une ration par personne. Les survivants gagnent de l’expérience et choisissent une compétence par niveau, dans <b>Équipe</b>.',
       'Une journée perdue peut être rejouée, sauf en difficulté Dur.',
@@ -95,6 +96,8 @@ export const GUIDES: Record<string, { title: string; steps: string[] }> = {
   shelter: {
     title: 'L’abri',
     steps: [
+      'L’abri démarre presque vide. Il s’équipe avec ce que vos survivants trouvent en ville : la liste du bas montre ce qui est repéré, en route ou installé.',
+      'Un objet se repère en envoyant <b>reconnaître</b>, puis se ramène avec <b>Récupérer</b> au même endroit. Une fois posé dans la cour, son effet est permanent.',
       'En haut, votre stock : médicaments, rations, pièces.',
       'Chaque amélioration a deux niveaux. L’antenne étend la zone où la radio porte, l’infirmerie soigne mieux la nuit, le générateur éclaire la cour, la réserve augmente le stock maximal.',
       'Une amélioration achetée se voit dans la cour dès le lendemain.',

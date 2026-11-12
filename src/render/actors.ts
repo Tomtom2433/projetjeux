@@ -806,7 +806,7 @@ export class Actors {
       // markers shrink as the camera closes in, so they never bury the character
       const near = Math.min(1, Math.max(0.5, stage.view.zoom / 26));
       v.ring.scale.setScalar(near * (1 + (ui.selected === sv.id ? Math.sin(t * 5) * 0.06 : 0)));
-      v.crate.visible = stockTotal(sv.carrying) > 0 && !down && !cm;
+      v.crate.visible = (stockTotal(sv.carrying) > 0 || !!s.flags['haul_' + sv.id]) && !down && !cm;
       v.crate.rotation.y = v.heading;
 
       // escorted civilians trail behind

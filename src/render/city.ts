@@ -112,6 +112,8 @@ export interface City {
   interiors: Record<string, THREE.Mesh>;
   update(t: number, dark: number, storm: number): void;
   setShelter(sh: Shelter): void;
+  /** Show the objects brought back to the base. */
+  setFinds(ids: string[]): void;
   setBusFire(on: boolean): void;
   flare(x: number, z: number): void;
 }
@@ -283,16 +285,7 @@ export function buildCity(q: Quality): City {
   B.box('metal', 5, 2.3, 2.4, -50.5, 4.75, 27.5, 0x35566b, 0.08);
   mast(-55, 4.75, 23.5, 7, B);
   glow(-55, 12.4, 23.5, 0xff2a1e, 0.9, 'beacon', 0, 1.2, true);
-  // infirmary tent
-  tent(-36.5, 26, 6.4, 4.6, 0xb9b39e, B);
-  B.box('glow', 0.9, 0.28, 0.05, -36.5, 1.6, 28.36, 0x3fd0a4);
-  B.box('glow', 0.28, 0.9, 0.05, -36.5, 1.3, 28.36, 0x3fd0a4);
-  // generator (cold until upgraded), drums, crates, table, fire barrel
-  B.box('gloss', 2.6, 1.3, 1.4, -45, 0.15, 32, 0xc49a22);
-  B.box('metal', 0.9, 1.0, 1.2, -43.4, 0.15, 32, 0x4b4d50);
-  B.box('matte', 2.9, 0.15, 1.7, -45, 0, 32, 0x2a2a2a);
-  B.cyl('metal', 0.12, 1.3, -46, 1.4, 32.3, 0x2b2b2b);
-  for (const [dx, dz] of [[-48, 33], [-48.9, 32.3], [-48.2, 31.5]]) B.cyl('gloss', 0.42, 1.05, dx, 0, dz, r() < 0.5 ? 0x8a2f24 : 0x2d4a63, 0, 0, true);
+  // table and fire barrel: all there is on the first evening
   B.cyl('metal', 0.45, 0.95, -41, 0, 21.5, 0x3a2f28, 0, 0, true);
   B.box('glow', 0.5, 0.12, 0.5, -41, 0.9, 21.5, 0xffa040);
   glow(-41, 0.1, 21.5, 0xff8a3a, 0.9, 'flicker', 0, 8);
@@ -587,6 +580,78 @@ export function buildCity(q: Quality): City {
   sub('storage', (b) => {
     b.box('metal', 2.4, 2.5, 6.1, -33.4, 0, 14, 0x8a7a3a, 0.04);
     for (let i = 0; i < 8; i++) b.box('matte', 1, 0.8, 1, -37 + (i % 4) * 1.1, Math.floor(i / 4) * 0.8, 11.4, 0x6f5b3c, 0.1);
+  });
+  // objects brought back from the district: each appears in the yard once it is installed
+  const found: Record<string, THREE.Group> = {};
+  const fsub = (id: string, fn: (b: Batch) => void) => {
+    const b = new Batch(r);
+    fn(b);
+    const g = b.build(mats, q.shadows);
+    g.visible = false;
+    root.add(g);
+    found[id] = g;
+  };
+  fsub('tarp', (b) => {
+    tent(-36.5, 26, 6.4, 4.6, 0xb9b39e, b);
+    b.box('glow', 0.9, 0.28, 0.05, -36.5, 1.6, 28.36, 0x3fd0a4);
+    b.box('glow', 0.28, 0.9, 0.05, -36.5, 1.3, 28.36, 0x3fd0a4);
+  });
+  fsub('genset', (b) => {
+    b.box('gloss', 2.6, 1.3, 1.4, -45, 0.15, 32, 0xc49a22);
+    b.box('metal', 0.9, 1.0, 1.2, -43.4, 0.15, 32, 0x4b4d50);
+    b.box('matte', 2.9, 0.15, 1.7, -45, 0, 32, 0x2a2a2a);
+    b.cyl('metal', 0.12, 1.3, -46, 1.4, 32.3, 0x2b2b2b);
+    for (const [dx, dz, c] of [[-48, 33, 0x8a2f24], [-48.9, 32.3, 0x2d4a63], [-48.2, 31.5, 0x8a2f24]]) b.cyl('gloss', 0.42, 1.05, dx, 0, dz, c, 0, 0, true);
+  });
+  fsub('water', (b) => {
+    b.cyl('gloss', 1.25, 2.1, -57, 0.5, 31.5, 0x3f6f8a, 0, 0, true);
+    b.box('metal', 3, 0.5, 3, -57, 0, 31.5, 0x3b3f42);
+    b.cyl('metal', 0.08, 0.9, -55.6, 0.4, 31.5, 0x8d9296);
+  });
+  fsub('stove', (b) => {
+    b.box('metal', 0.9, 1.0, 0.8, -46.5, 0, 20.6, 0x26221f);
+    b.cyl('metal', 0.12, 2.4, -46.5, 1.0, 20.6, 0x2b2b2b);
+    b.box('glow', 0.4, 0.3, 0.05, -46.5, 0.35, 21.02, 0xff7a2a);
+    for (let i = 0; i < 5; i++) b.box('matte', 0.9, 0.22, 0.22, -45.2, 0.02 + (i % 2) * 0.22, 20.2 + Math.floor(i / 2) * 0.26, 0x6b4a2c, 0.1);
+  });
+  fsub('shelves', (b) => {
+    for (let i = 0; i < 3; i++) {
+      b.box('metal', 3.2, 0.08, 0.9, -39, 0.5 + i * 0.75, 11.2, 0x6d7275);
+      b.box('matte', 0.8, 0.5, 0.7, -40 + i * 0.95, 0.56 + i * 0.75, 11.2, i % 2 ? 0x6f5b3c : 0x4f6a52);
+    }
+    for (const dx of [-40.6, -37.4]) b.box('metal', 0.08, 2.3, 0.9, dx, 0, 11.2, 0x4b5257);
+  });
+  fsub('flood', (b) => {
+    b.cyl('metal', 0.07, 3.2, -44, 0, 10.6, 0x3d4245);
+    b.box('metal', 1.0, 0.6, 0.4, -44, 3.2, 10.6, 0x2b2e30);
+    b.box('glow', 0.9, 0.5, 0.08, -44, 3.25, 10.36, 0xfff1d0);
+  });
+  fsub('seeds', (b) => {
+    for (let i = 0; i < 3; i++) {
+      b.box('matte', 3.2, 0.45, 1.1, -34 , 0, 31.2 + i * 1.5, 0x5a4632);
+      b.box('foliage', 2.9, 0.35, 0.85, -34, 0.42, 31.2 + i * 1.5, 0x4f8a3c);
+    }
+  });
+  fsub('dish', (b) => {
+    b.cyl('metal', 1.5, 0.3, -52.5, 7.7, 29, 0xd5d8da, 0.8, 0, true);
+    b.cyl('metal', 0.07, 1.2, -52.5, 6.9, 29, 0x6d7275);
+  });
+  fsub('cots', (b) => {
+    for (let i = 0; i < 3; i++) {
+      b.box('matte', 0.9, 0.12, 2.0, -40.5 + i * 1.3, 0.35, 29.2, 0x5d6a4a);
+      b.box('metal', 0.9, 0.35, 0.06, -40.5 + i * 1.3, 0, 28.3, 0x3d4245);
+      b.box('metal', 0.9, 0.35, 0.06, -40.5 + i * 1.3, 0, 30.1, 0x3d4245);
+    }
+  });
+  fsub('battery', (b) => {
+    for (let i = 0; i < 4; i++) b.box('gloss', 0.7, 0.55, 0.45, -42.2, 0.15, 30.9 + i * 0.55, 0x23282c);
+    b.box('glow', 0.12, 0.12, 0.05, -41.84, 0.5, 31.2, 0x6dff8a);
+  });
+  fsub('bench', (b) => {
+    b.box('matte', 3.0, 0.14, 1.1, -50.5, 0.95, 20.2, 0x6b4a2c);
+    for (const [dx, dz] of [[-51.8, 19.8], [-49.2, 19.8], [-51.8, 20.6], [-49.2, 20.6]]) b.box('metal', 0.1, 0.95, 0.1, dx, 0, dz, 0x3d4245);
+    b.box('metal', 0.5, 0.35, 0.35, -51.3, 1.1, 20.2, 0x8a2f24);
+    b.box('metal', 2.2, 0.9, 0.06, -50.5, 1.1, 19.7, 0x4b5257);
   });
   for (const [fx, fz] of [[-52, 15], [-37, 15], [-37, 30], [-52, 31]]) floods.push(glow(fx, 0.1, fz, 0xfff0d2, 0.0, 'flood', 0, 13));
   for (const [fx, fz] of [[-44, 3], [-64, 22], [-26, 22]]) floods.push(glow(fx, 0.1, fz, 0xfff0d2, 0.0, 'flood', 0, 11));
@@ -895,6 +960,9 @@ export function buildCity(q: Quality): City {
       shelterKey = key;
       for (const k of Object.keys(up) as (keyof Shelter)[]) up[k].forEach((g, i) => (g.visible = sh[k] > i));
       floods.forEach((f, i) => (f.base = sh.generator >= 1 && i < 4 ? 0.55 : sh.generator >= 2 && i >= 4 ? 0.5 : 0));
+    },
+    setFinds(ids) {
+      for (const [id, g] of Object.entries(found)) g.visible = ids.includes(id);
     },
     setBusFire(on) {
       busFire.forEach((g, i) => (g.base = on ? (i === 0 ? 1.3 : 1) : 0));

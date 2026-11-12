@@ -361,3 +361,24 @@ describe('optional objectives and helping by hand', () => {
     expect(s.flags.prep_lena).toBe(1);
   });
 });
+
+import { FINDS, findTargets, hasFind, knowsFind } from '../src/sim/finds';
+
+describe('objects for the base', () => {
+  it('are spotted by scouting, carried home by searching, and then change the shelter', () => {
+    const s = newGame(31);
+    const ev: SimEvent[] = [];
+    s.awaiting = null;
+    s.threats = [];
+    expect(FINDS.length).toBeGreaterThanOrEqual(10);
+    expect(hasFind(s, 'genset')).toBe(false);
+    for (const v of s.survivors) { v.trust = 100; v.courage = 100; }
+    issueOrder(s, 'lena', 'scout', 'quay_s', ev);
+    for (let i = 0; i < 800 && !knowsFind(s, 'genset'); i++) { step(s, 0.25, ev); s.threats = []; if (s.awaiting !== null) s.awaiting = null; }
+    expect(knowsFind(s, 'genset')).toBe(true);
+    expect(findTargets(s)).toContain('quay_s');
+    issueOrder(s, 'jo', 'retrieve', 'quay_s', ev);
+    for (let i = 0; i < 1600 && !hasFind(s, 'genset'); i++) { step(s, 0.25, ev); s.threats = []; if (s.awaiting !== null) s.awaiting = null; }
+    expect(hasFind(s, 'genset')).toBe(true);
+  });
+});

@@ -34,6 +34,7 @@ import { tickDirector } from './director';
 import { breakSynchro, coverCallouts, coverer, creditSynchro } from './cover';
 import { aptitude, gainXp, hasPerk, levelUp, practise } from './perks';
 import { boosted, settleSides } from './side';
+import { findTargets, hasFind, haul, install, noteFinds } from './finds';
 import { ORDER_LABEL } from './text';
 import { LAST_DAY, buildEnding, mission, objective, objectiveStatus, type ObjectiveStatus } from './missions';
 
@@ -56,7 +57,7 @@ export function validTargets(s: GameState, sv: Survivor, type: OrderType): NodeI
   const all = Object.keys(NODE);
   if (type === 'hold' || type === 'retreat') return [];
   if (type === 'scout') return all.filter((n) => n !== 'shelter' && n !== here);
-  if (type === 'retrieve') return all.filter((n) => NODE[n].kind === 'interior' || (s.loot[n] && stockTotal(s.loot[n]) > 0 && s.intel[n].lootKnown) || n === 'quay_s');
+  if (type === 'retrieve') return all.filter((n) => findTargets(s).includes(n) || NODE[n].kind === 'interior' || (s.loot[n] && stockTotal(s.loot[n]) > 0 && s.intel[n].lootKnown) || n === 'quay_s');
   // rescue: downed survivors, known people in need.
   const out = new Set<NodeId>();
   for (const o of s.survivors) if (o.alive && o.mode === 'down' && o.id !== sv.id) out.add(o.lastReport.node);
@@ -222,6 +223,8 @@ function arriveHome(s: GameState, sv: Survivor, ev: SimEvent[]) {
     s.delivered[k] += put;
   }
   sv.carrying = emptyStock();
+  const installed = install(s, sv, ev);
+  void installed;
   const people: string[] = [];
   if (sv.escort.ines) {
     people.push('Inès Duval');
@@ -322,6 +325,7 @@ function runOrder(s: GameState, sv: Survivor, dt: number, ev: SimEvent[]) {
   if (o.type === 'scout') {
     perceive(s, sv, true);
     s.flags['scouted_' + target] = true;
+    noteFinds(s, sv, target, ev, hasPerk(sv, 'lynx') || !!s.intel[target].lootKnown);
     creditSynchro(s, sv, 'scout_' + target, ev);
     gainXp(s, sv, 12);
     practise(s, sv, 'scout');
@@ -345,6 +349,9 @@ function runOrder(s: GameState, sv: Survivor, dt: number, ev: SimEvent[]) {
         room -= take;
       }
     s.intel[target].lootKnown = true;
+    noteFinds(s, sv, target, ev);
+    const hauled = haul(s, sv, target, ev);
+    if (hauled) gainXp(s, sv, 6);
     if (stockTotal(got) > 0) {
       if (hasPerk(sv, 'scrounger')) {
         got.supplies++;
@@ -1134,13 +1141,14 @@ export function nextDay(s: GameState, ev: SimEvent[]) {
       shiftTrust(sv, -6);
       remember(s, sv, 'Une nuit le ventre vide.', -0.4);
     }
-    const heal = 12 + 22 * s.shelter.infirmary + (s.persistent.inesRescued ? 10 : 0) - (s.persistent.noMedicine ? 14 : 0);
+    const heal = 12 + 22 * s.shelter.infirmary + (s.persistent.inesRescued ? 10 : 0) - (s.persistent.noMedicine ? 14 : 0) + (hasFind(s, 'tarp') ? 6 : 0) + (hasFind(s, 'water') ? 4 : 0);
     sv.health = clamp(sv.health + heal, 5, 100);
-    sv.fatigue = 8;
-    sv.fear = clamp(sv.fear * 0.45);
+    sv.fatigue = hasFind(s, 'water') ? 2 : 8;
+    sv.fear = clamp(sv.fear * (hasFind(s, 'stove') ? 0.2 : 0.45));
     if (sv.ammo === 0 && sv.equipment.includes('Pistolet') && rnd(s) < 0.5) sv.ammo = 1;
   }
   s.persistent.noMedicine = false;
+  if (hasFind(s, 'seeds')) s.resources.supplies += 1;
   s.resources.medicine = Math.max(0, s.resources.medicine - 1);
   s.day++;
   const joined = recruit(s);

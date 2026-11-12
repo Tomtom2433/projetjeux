@@ -58,7 +58,7 @@ export class MiniGames {
     this.active = true;
     this.el.hidden = false;
     this.el.innerHTML = `<div class="sheet mg"><header><h2>${T.title}</h2><small>${name}</small></header>
-      <div class="body"><p class="mg-say">${T.say.replace('{n}', name)}</p><div class="mg-area mg-${kind}"></div><p class="mg-res"></p></div>
+      <div class="body"><p class="mg-say">${T.say.replace('{n}', name)}</p>${kind === 'scout' ? '' : `<div class="mg-pic" style="background-image:url(./art/mg-${kind}.webp)"></div>`}<div class="mg-area mg-${kind}"></div><p class="mg-res"></p></div>
       <div class="actions"><button class="btn ghost" data-mg="skip">Laisser faire</button><button class="btn primary" data-mg="ok" hidden>Continuer</button></div></div>`;
     const area = this.el.querySelector('.mg-area') as HTMLDivElement;
     const res = this.el.querySelector('.mg-res') as HTMLParagraphElement;

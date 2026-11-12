@@ -4,6 +4,7 @@ import { NODE, NODES } from './world';
 import { emptyStock, pushRadio, rnd } from './core';
 import { mission } from './missions';
 import { drawSides } from './side';
+import { findBlocker, hasFind } from './finds';
 
 export const SAVE_VERSION = 7;
 export const MISSION_DURATION = 600;
@@ -150,6 +151,7 @@ export function setupDay(s: GameState, ev: SimEvent[]) {
   s.time = 0;
   s.phase = 'running';
   s.flags = {};
+  s.duration = MISSION_DURATION + (hasFind(s, 'flood') ? 30 : 0);
   s.debrief = null;
   s.delivered = emptyStock();
   s.rescuedToday = [];
@@ -296,6 +298,8 @@ export function upgradeBlocker(s: GameState, key: keyof Shelter): string | null 
   const lvl = s.shelter[key];
   if (lvl >= def.levels.length) return 'Niveau maximum';
   if (key === 'antenna' && lvl === 1 && s.shelter.generator < 1) return 'Nécessite un générateur';
+  const missing = findBlocker(s, key, lvl + 1);
+  if (missing) return missing;
   const cost = def.levels[lvl].cost;
   for (const k of ['supplies', 'medicine', 'parts'] as const) {
     if ((cost[k] ?? 0) > s.resources[k]) return 'Ressources insuffisantes';

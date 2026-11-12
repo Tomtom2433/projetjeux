@@ -11,6 +11,7 @@ import { storedTier, storeTier, type Tier } from '../render/quality';
 import { audio, type Channel } from './audio';
 import { applyPrefs, storedDifficulty, storedSafe, storedText, storeSafe, storeText } from './prefs';
 import { DIFFICULTY } from '../sim/core';
+import { FINDS, hasFind, knowsFind } from '../sim/finds';
 import { assistable, sideStatus, type AssistKind } from '../sim/side';
 import { MINI_TEXT, MiniGames } from './minigames';
 import { GUIDES, MANUAL, TIPS, markSeen, resetSeen, wasSeen } from './guide';
@@ -803,6 +804,13 @@ export class Ui {
             <p>${lvl === 0 ? u.base : u.levels[lvl - 1].effect}</p>
             ${next ? `<p class="next">▸ Niv. ${lvl + 1} : ${next.effect}</p>` : ''}
             <footer>${next ? `<span class="cost">${(Object.entries(next.cost) as [keyof typeof names, number][]).map(([k, v]) => `<span class="${s.resources[k] < v ? 'no' : ''}">${v} ${names[k]}${v > 1 && k !== 'medicine' ? 's' : ''}</span>`).join('')}</span><button class="btn ${block ? '' : 'primary'}" data-act="buy" data-arg="${u.key}" ${block ? 'disabled' : ''}>${block && block !== 'Ressources insuffisantes' ? block : 'Améliorer'}</button>` : '<span class="cost">Niveau maximum</span>'}</footer></div>`;
+        }).join('')}</div>
+        <h4 class="finds-h">Objets à trouver en ville <small>${FINDS.filter((f) => hasFind(s, f.id)).length} / ${FINDS.length} installés</small></h4>
+        <div class="finds">${FINDS.map((f) => {
+          const got = hasFind(s, f.id);
+          const known = knowsFind(s, f.id);
+          const carrier = s.survivors.find((v) => s.flags['haul_' + v.id] === f.id);
+          return `<div class="find ${got ? 'got' : known ? 'known' : ''}"><i>${got ? '✓' : carrier ? '⇢' : known ? '◎' : '?'}</i><div><b>${got || known ? f.name : 'Objet inconnu'}</b><small>${got ? f.effect : carrier ? `${carrier.short} le ramène. ${f.effect}` : known ? `Repéré : ${nodeName(f.at)}. ${f.effect}` : 'Pas encore repéré. Envoyez reconnaître et fouiller.'}</small></div></div>`;
         }).join('')}</div></div></div>`;
     } else if (this.screen === 'debrief' && s.debrief) {
       const d = s.debrief;
