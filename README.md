@@ -76,6 +76,17 @@ Glisser pour déplacer la caméra, pincer ou molette pour zoomer, mini-carte pou
   comme écarts à la pose de repos, donc un clip fait pour un personnage se joue sur tous
   (`ClipFigure` dans `src/render/rigged.ts`). Marche et course défilent selon la distance réellement parcourue :
   les pieds ne glissent pas, quelle que soit la vitesse. Les transitions entre clips sont fondues.
+- **Infectés** : un modèle réaliste dupliqué (jusqu'à 14 corps animés à la fois, 6 en qualité légère), avec une
+  démarche traînante ; au-delà, les silhouettes stylisées prennent le relais.
+- **Objectifs secondaires** (`src/sim/side.ts`) : deux par journée, tirés selon la graine et le jour (personne
+  repéré, personne à terre, rentrés une minute avant la nuit, 4 ressources, Synchro ×3). Chacun rapporte
+  12 XP à toute l'équipe et une ration.
+- **Aider à la main** : quand un survivant part observer, fouiller ou secourir, un bouton « Aider » lance une
+  épreuve de précision en trois essais (mise au point, crochetage, gestes de secours). Réussie, elle raccourcit le
+  travail ou ramène le blessé en meilleur état. Toujours facultative.
+- **Guides** (`src/ui/guide.ts`) : manuel complet (« Comment jouer »), guide affiché à la première ouverture de
+  chaque écran (radio, équipe, abri, débrief, réglages) et rappelable par « ? », conseils de Mara la première
+  fois qu'un événement survient (refus, liaison perdue, blessure, Synchro, nuit proche…).
 - **Brouillard** : les zones non reconnues sont sous une nappe de brume animée, qui se lève là où un survivant a
   regardé et revient en voile léger quand le renseignement vieillit.
 - **Recrues** (`recruit` dans `src/sim/state.ts`) : Inès et Sacha, une fois ramenés à l'abri, rejoignent l'équipe

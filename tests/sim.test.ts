@@ -342,3 +342,22 @@ describe('recruits', () => {
     expect(s.survivors.filter((v) => v.id === 'ines').length).toBe(1);
   });
 });
+
+import { assist, assistable, sideStatus } from '../src/sim/side';
+
+describe('optional objectives and helping by hand', () => {
+  it('draws two objectives a day and banks help given on the way', () => {
+    const s = newGame(8);
+    const ev: SimEvent[] = [];
+    expect(sideStatus(s).length).toBe(2);
+    s.awaiting = null;
+    const lena = s.survivors.find((v) => v.id === 'lena')!;
+    lena.trust = 100;
+    lena.courage = 100;
+    issueOrder(s, 'lena', 'scout', 'cross_w', ev);
+    expect(assistable(s, lena)).toBe('scout');
+    assist(s, 'lena', 'scout', 1, ev);
+    expect(assistable(s, lena)).toBeNull(); // once per order
+    expect(s.flags.prep_lena).toBe(1);
+  });
+});

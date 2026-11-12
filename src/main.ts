@@ -17,6 +17,7 @@ import { audio } from './ui/audio';
 import { Tutorial } from './ui/tutorial';
 import { introScene, nightScene, type Scene } from './sim/scenes';
 import { Cine } from './ui/cine';
+import { assist, type AssistKind } from './sim/side';
 import { useItem, type ItemId } from './sim/items';
 import { watchErrors } from './ui/report';
 
@@ -182,6 +183,11 @@ class Game implements GameApi {
     issueOrder(this.s, this.selected, this.orderType, this.chosen, this.ev);
     this.cancelOrder();
     this.routeTimer = 0;
+  }
+
+  /** Result of a mini-game played to help a survivor. */
+  assist(id: string, kind: AssistKind, score: number) {
+    assist(this.s, id, kind, score, this.ev);
   }
 
   /** Keep the current order and line this one up behind it. */
@@ -358,12 +364,17 @@ class Game implements GameApi {
         const sv = survivor(this.s, e.survivor);
         if (sv) this.ui.orderFeedback(sv, e.result);
         audio.sfx(e.result === 'refused' ? 'refuse' : 'order');
+        if (e.result === 'refused') this.ui.tip('refuse');
+      } else if (e.type === 'link') {
+        if (!e.linked) this.ui.tip('link');
       } else if (e.type === 'sync') {
         this.ui.onSync(e.value, e.found);
         audio.sfx('sync');
+        if (e.value > 0) this.ui.tip('sync');
       } else if (e.type === 'hit') {
         this.actors.onHit(e.survivor);
         audio.sfx('hit');
+        this.ui.tip('hit');
         if (e.survivor === this.selected) this.stage.shake(0.5);
       }
       else if (e.type === 'noise') {
@@ -404,7 +415,7 @@ class Game implements GameApi {
     this.t += dt;
     const s = this.s;
 
-    const running = this.started && !this.paused && !this.ui.tutorial.holding && this.ui.screen === null && s.phase === 'running' && s.awaiting === null;
+    const running = this.started && !this.paused && !this.ui.tutorial.holding && !this.ui.tipOpen && this.ui.screen === null && s.phase === 'running' && s.awaiting === null;
     if (running) {
       this.acc += dt * this.speed;
       let guard = 0;

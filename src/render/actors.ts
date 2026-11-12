@@ -10,7 +10,7 @@ import { objectiveStatus } from '../sim/missions';
 import type { Stage } from './scene';
 import type { City } from './city';
 import { GROUND, makeDash } from './textures';
-import { loadRig, type Figure } from './rigged';
+import { loadHorde, loadRig, type Figure } from './rigged';
 import { coverer } from '../sim/cover';
 
 export interface UiView {
@@ -196,6 +196,8 @@ export class Actors {
   private cine: Record<string, CineMark> | null = null;
   private extras = new Map<string, { mesh: THREE.Mesh; x: number; z: number; heading: number }>();
   private npcs = new Map<string, Npc>();
+  /** Realistic infected, reused from pack to pack; beyond the pool the stylised silhouettes take over. */
+  private horde: { fig: Figure; group: THREE.Group; x: number; z: number; walk: number; gait: number; on: boolean }[] = [];
   get count() {
     return this.views.size;
   }
@@ -424,6 +426,16 @@ export class Actors {
       this.nodeTags.set(n.id, d);
     }
     for (const sv of s.survivors) this.addSurvivor(sv);
+    void loadHorde(this.stage.q.shadows ? 14 : 6, 2.25, this.stage.q.shadows).then((figs) => {
+      if (!figs || !this.root.parent) return;
+      for (const fig of figs) {
+        const group = new THREE.Group();
+        group.add(fig.root);
+        group.visible = false;
+        this.root.add(group);
+        this.horde.push({ fig, group, x: 0, z: 0, walk: 0, gait: 0, on: false });
+      }
+    });
     // secondary characters who are not on the team share one realistic model each
     for (const id of Object.keys(NPC_HEIGHT)) {
       if (s.survivors.some((v) => v.id === id)) continue;
@@ -858,6 +870,7 @@ export class Actors {
 
     // ---------------- infected: only what a linked survivor is watching right now
     let n = 0;
+    let hi = 0;
     const live = new Set<NodeId>();
     for (const th of s.threats) {
       if (!th.seen) {
@@ -881,6 +894,28 @@ export class Actors {
         this.dummy.position.set(c.x + Math.cos(a) * rad + sway * 0.15, Math.abs(stepA) * 0.08, c.z + Math.sin(a) * rad);
         this.dummy.rotation.set(0.24 + sway * 0.06 + (hunting ? 0.12 : 0), th.to ? p.heading + sway * 0.15 : a + sway * 0.4, sway * 0.1, 'YXZ');
         this.dummy.scale.setScalar(1.3 * (0.92 + hash(i * 5 + th.id) * 0.18));
+        const h = this.horde[hi];
+        if (h) {
+          // a realistic body: it shambles by the ground it actually covers
+          hi++;
+          const tx = this.dummy.position.x;
+          const tz = this.dummy.position.z;
+          if (!h.on) {
+            h.x = tx;
+            h.z = tz;
+          }
+          const moved = Math.min(1, Math.hypot(tx - h.x, tz - h.z));
+          h.x = tx;
+          h.z = tz;
+          h.gait += (Math.min(1.1, dt > 0 ? moved / dt / 2.4 : 0) - h.gait) * Math.min(1, dt * 6);
+          h.walk += moved * 3.4;
+          h.on = true;
+          h.group.visible = true;
+          h.group.position.set(tx, 0, tz);
+          h.group.rotation.set(0, this.dummy.rotation.y, 0);
+          h.fig.pose({ phase: h.walk + i * 1.3, gait: Math.max(h.gait, th.to || hunting ? 0.45 : 0), armL: 0, armR: 0, elbowL: 0, elbowR: 0, crouch: 0, spread: 0, action: hunting && !th.to ? 'punch' : 'shamble', time: t + i * 0.7 + th.id });
+          continue;
+        }
         this.dummy.updateMatrix();
         this.infected.setMatrixAt(n, this.dummy.matrix);
         const P = this.hordeParts;
@@ -899,6 +934,13 @@ export class Actors {
       }
     }
     this.infected.count = n;
+    for (let i = hi; i < this.horde.length; i++) {
+      const h = this.horde[i];
+      if (h.on) {
+        h.on = false;
+        h.group.visible = false;
+      }
+    }
     this.hordeLegs.count = this.hordeArms.count = n * 2;
     this.infected.instanceMatrix.needsUpdate = true;
     this.hordeLegs.instanceMatrix.needsUpdate = true;

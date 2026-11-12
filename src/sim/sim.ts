@@ -33,6 +33,7 @@ import { recruit, setupDay, storageCap } from './state';
 import { tickDirector } from './director';
 import { breakSynchro, coverCallouts, coverer, creditSynchro } from './cover';
 import { aptitude, gainXp, hasPerk, levelUp, practise } from './perks';
+import { settleSides } from './side';
 import { ORDER_LABEL } from './text';
 import { LAST_DAY, buildEnding, mission, objective, objectiveStatus, type ObjectiveStatus } from './missions';
 
@@ -306,6 +307,12 @@ function runOrder(s: GameState, sv: Survivor, dt: number, ev: SimEvent[]) {
       sv.work = 12 * (1.36 - aptitude(sv, 'retrieve') * 0.12);
       say(s, ev, sv, line(s, sv, 'search_start', vars));
     } else sv.work = 2;
+    // help given by hand on the way shortens the work
+    const prep = Number(s.flags['prep_' + sv.id] ?? 0);
+    if (prep > 0) {
+      sv.work = Math.max(0.2, sv.work - (o.type === 'scout' ? 4 : 6) * prep);
+      s.flags['prep_' + sv.id] = 0;
+    }
     return;
   }
   // stage === 'work'
@@ -365,7 +372,9 @@ function runOrder(s: GameState, sv: Survivor, dt: number, ev: SimEvent[]) {
 
 function pickUp(s: GameState, sv: Survivor, ally: Survivor, ev: SimEvent[]) {
   ally.carriedBy = sv.id;
-  ally.health = Math.max(ally.health, (hasPerk(sv, 'surehands') ? 35 : sv.medic ? 15 : 5) + aptitude(sv, 'rescue') * 4);
+  // steady hands, guided over the radio, bring the wounded round in better shape
+  ally.health = Math.max(ally.health, (hasPerk(sv, 'surehands') ? 35 : sv.medic ? 15 : 5) + aptitude(sv, 'rescue') * 4 + Math.round(25 * Number(s.flags['steady_' + sv.id] ?? 0)));
+  s.flags['steady_' + sv.id] = 0;
   practise(s, sv, 'rescue');
   creditSynchro(s, sv, 'pickup_' + ally.id, ev);
   gainXp(s, sv, 20);
@@ -408,6 +417,7 @@ function goDown(s: GameState, sv: Survivor, ev: SimEvent[]) {
   say(s, ev, sv, line(s, sv, 'down'), 'alert');
   remember(s, sv, `Est tombé·e à ${NODE[zoneOf(sv)].name}.`, -0.7, 'hurt', zoneOf(sv));
   cryOut(s, sv, ev);
+  s.flags.downToday = true;
   setMode(s, sv, 'down');
   sv.health = 0;
   sv.bleed = 110;
@@ -477,6 +487,7 @@ function encounter(s: GameState, sv: Survivor, prox: Proximity, ev: SimEvent[]) 
         th.target = sv.id;
         th.timer = 0;
         breakSynchro(s, ev);
+        s.flags.spottedToday = true;
         sv.fear = clamp(sv.fear + 24 * (1 - sv.courage / 200) * (hasPerk(sv, 'calm') ? 0.7 : 1));
         say(s, ev, sv, line(s, sv, 'spotted', { node: node.name }), 'alert');
       }
@@ -1006,7 +1017,10 @@ export function endDay(s: GameState, ev: SimEvent[]) {
     for (const type of ['scout', 'retrieve', 'hold', 'rescue']) if (s.flags['apt_' + sv.id + '_' + type]) levelUps.push(`${sv.short} progresse en « ${ORDER_LABEL[type]} » (${sv.skill[type]}/5)`);
     if (sv.order?.type === 'hold' || s.flags['held_' + sv.id]) practise(s, sv, 'hold');
   }
+  const sideNotes = s.day > 0 ? settleSides(s) : [];
+  for (const sv of s.survivors) if (sv.alive) xp[sv.id] = (s.flags['xp_' + sv.id] as number) ?? 0;
   buildDebrief(s, nightNotes, obj, title);
+  s.debrief!.consequences.push(...sideNotes);
   s.debrief!.xp = xp;
   s.debrief!.levelUps = levelUps;
   s.phase = 'debrief';

@@ -11,13 +11,15 @@ import { storedTier, storeTier, type Tier } from '../render/quality';
 import { audio, type Channel } from './audio';
 import { applyPrefs, storedDifficulty, storedSafe, storedText, storeSafe, storeText } from './prefs';
 import { DIFFICULTY } from '../sim/core';
+import { assistable, sideStatus, type AssistKind } from '../sim/side';
+import { GUIDES, MANUAL, TIPS, markSeen, resetSeen, wasSeen } from './guide';
 import { ITEMS, canUseItem, type ItemId } from '../sim/items';
 import { VERSION, buildReport } from './report';
 import { ACHIEVEMENTS, loadProfile } from './profile';
 import { synchro } from '../sim/cover';
 import { Tutorial } from './tutorial';
 
-export type Screen = 'about' | 'profile' | 'title' | 'radio' | 'roster' | 'shelter' | 'debrief' | 'ending' | 'settings' | 'scene' | null;
+export type Screen = 'help' | 'mini' | 'about' | 'profile' | 'title' | 'radio' | 'roster' | 'shelter' | 'debrief' | 'ending' | 'settings' | 'scene' | null;
 
 export interface GameApi {
   s: GameState;
@@ -34,6 +36,7 @@ export interface GameApi {
   pickOrder(t: OrderType): void;
   confirmOrder(): void;
   queueOrder(): void;
+  assist(id: string, kind: AssistKind, score: number): void;
   useItem(id: ItemId): void;
   cancelOrder(): void;
   choose(choiceId: string): void;
@@ -57,6 +60,12 @@ export interface GameApi {
   stats(): { calls: number; tris: number; scale: number; ms: number; tier: string };
   view(): { x: number; z: number; zoom: number };
 }
+
+const MINI_TEXT: Record<AssistKind, { title: string; say: string; verb: string; good: string; mid: string; bad: string }> = {
+  scout: { title: 'Mise au point', say: '{n} règle ses jumelles. Dites-lui quand l’image est nette : touchez quand le repère passe dans la zone claire.', verb: 'Net !', good: 'Image parfaite : elle lit la rue d’un coup d’œil, et les rues voisines avec.', mid: 'C’est mieux. Elle gagne quelques secondes.', bad: 'Flou. Elle se débrouillera sans vous.' },
+  retrieve: { title: 'Crochetage', say: '{n} force une serrure. Elle cède par crans : touchez quand le repère est sur le cran.', verb: 'Cran !', good: 'Ouvert sans un bruit. La fouille va beaucoup plus vite.', mid: 'Ça finit par céder. Un peu de temps gagné.', bad: 'Le crochet a ripé. La fouille prendra son temps.' },
+  rescue: { title: 'Gestes de secours', say: 'Guidez {n} par radio : compressions en rythme. Touchez quand le repère est dans la zone.', verb: 'Maintenant !', good: 'Rythme tenu. Le blessé reviendra à lui en bien meilleur état.', mid: 'Rythme inégal. Ça aidera un peu.', bad: 'Trop tôt, trop tard. Les gestes seront les siens, pas les vôtres.' },
+};
 
 const diffSeg = () => `<div class="seg">${DIFFICULTY.map((d, i) => `<button class="${storedDifficulty() === i ? 'on' : ''}" data-act="difficulty" data-arg="${i}">${d.name}</button>`).join('')}</div>`;
 
@@ -196,6 +205,14 @@ const esc = (t: string) => t.replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt
 export class Ui {
   screen: Screen = null;
   showPerf = false;
+  private assistBtn = (() => {
+    const b = document.createElement('button');
+    b.id = 'assist';
+    b.hidden = true;
+    b.dataset.act = 'mini';
+    document.getElementById('bottom')!.prepend(b);
+    return b;
+  })();
   private el = {
     hud: document.getElementById('hud')!,
     status: document.getElementById('status')!,
@@ -294,6 +311,12 @@ export class Ui {
       case 'sound': audio.setMuted(!audio.muted); this.render(); break;
       case 'hud': this.setHud((this.hudMode + 1) % 3); break;
       case 'retry': g.retryDay(); break;
+      case 'guide': this.guideOpen = !this.guideOpen; this.render(); break;
+      case 'guide-ok': if (this.screen) markSeen('guide_' + this.screen); this.guideOpen = false; this.render(); break;
+      case 'guide-reset': resetSeen(); Tutorial.reset(); this.toast('Les guides et la formation reviendront.'); break;
+      case 'tip-ok': this.tipId = null; break;
+      case 'mini': this.startMini(arg.split(':')[0], arg.split(':')[1] as AssistKind); break;
+      case 'mini-hit': this.miniHit(); break;
       case 'report': {
         const st = g.stats();
         const text = buildReport({ Jour: g.s.day, Difficulté: DIFFICULTY[storedDifficulty()].name, Qualité: st.tier, 'Image (ms)': st.ms.toFixed(1) });
@@ -367,6 +390,60 @@ export class Ui {
     this.timer = 0;
   }
 
+  private guideOpen = false;
+
+  // ---------------------------------------------------------------- one-time advice
+  private tipId: string | null = null;
+  private tipShown = '';
+  get tipOpen() {
+    return this.tipId !== null;
+  }
+  /** Mara explains something the first time it happens. The game waits until it is read. */
+  tip(id: string) {
+    if (this.tipId || wasSeen('tip_' + id) || !TIPS[id] || this.g.s.day < 1) return;
+    markSeen('tip_' + id);
+    this.tipId = id;
+  }
+
+  // ---------------------------------------------------------------- helping by hand
+  private mini: { sv: string; name: string; kind: AssistKind; round: number; hits: number[]; pos: number; dir: number; speed: number; zone: [number, number]; done: boolean; score: number; wait: number } | null = null;
+  private startMini(svId: string, kind: AssistKind) {
+    const sv = this.g.s.survivors.find((v) => v.id === svId);
+    if (!sv) return;
+    this.mini = { sv: svId, name: sv.short, kind, round: 0, hits: [], pos: 0, dir: 1, speed: 0.75, zone: [0.52, 0.76], done: false, score: 0, wait: 0 };
+    this.open('mini');
+  }
+  private miniHit() {
+    const m = this.mini;
+    if (!m) return;
+    if (m.done) {
+      this.g.assist(m.sv, m.kind, m.score);
+      this.mini = null;
+      this.open(null);
+      return;
+    }
+    if (m.wait > 0) return;
+    const mid = (m.zone[0] + m.zone[1]) / 2;
+    const half = (m.zone[1] - m.zone[0]) / 2;
+    const off = Math.abs(m.pos - mid);
+    m.hits.push(off <= half ? 1 - (off / half) * 0.4 : off <= half * 1.6 ? 0.3 : 0);
+    navigator.vibrate?.(off <= half ? 20 : [30, 40, 30]);
+    m.round++;
+    if (m.round >= 3) {
+      m.done = true;
+      m.score = m.hits.reduce((a, b) => a + b, 0) / 3;
+    } else {
+      // each try is faster, with a narrower window somewhere else
+      m.speed += 0.3;
+      const w = 0.24 - m.round * 0.05;
+      const start = 0.15 + ((m.round * 0.37 + m.hits[0] * 0.2) % 0.55);
+      m.zone = [start, start + w];
+      m.wait = 0.35;
+    }
+    this.cache.delete(this.el.overlay);
+    this.render();
+  }
+
   /** The team's Synchro chain changed. */
   onSync(value: number, found: string | null) {
     this.syncFlash = this.now + 1.2;
@@ -437,6 +514,40 @@ export class Ui {
     this.now = t;
     this.edges();
     this.tutorial.frame(this.g.started && this.screen === null && s.phase === 'running' && s.awaiting === null);
+    if (this.mini && this.screen === 'mini' && !this.mini.done) {
+      const m = this.mini;
+      m.wait = Math.max(0, m.wait - dt);
+      m.pos += m.dir * m.speed * Math.min(0.05, dt);
+      if (m.pos > 1) { m.pos = 1; m.dir = -1; }
+      if (m.pos < 0) { m.pos = 0; m.dir = 1; }
+      const cur = document.getElementById('mg-cur');
+      if (cur) cur.style.left = `${(m.pos * 100).toFixed(1)}%`;
+    }
+    // advice waits for the training card to be out of the way
+    const coach = document.getElementById('coach')!;
+    if (this.tipId && this.tutorial.index < 0 && this.screen === null && this.g.started) {
+      coach.hidden = false;
+      if (this.tipShown !== this.tipId) {
+        this.tipShown = this.tipId;
+        coach.className = 'tut tip';
+        coach.innerHTML = `<div class="tp"><div class="pimg" style="background-image:url(./art/p-mara.webp)"></div></div><div class="tb"><small>Conseil · Mara</small><p class="say">${TIPS[this.tipId]}</p></div><div class="acts"><button class="btn primary" data-act="tip-ok">Compris</button></div>`;
+      }
+    } else this.tipShown = '';
+    // the helping hand: offered while there is something to help with
+    const helper = this.screen === null && this.tutorial.index < 0 && !this.tipId ? s.survivors.map((v) => ({ v, k: assistable(s, v) })).find((x) => x.k) : null;
+    const ab = this.assistBtn;
+    if (helper) {
+      const key = `${helper.v.id}:${helper.k}`;
+      if (ab.dataset.arg !== key || ab.hidden) {
+        ab.hidden = false;
+        ab.dataset.arg = key;
+        ab.innerHTML = `<b>✦ Aider ${helper.v.short}</b><span>${MINI_TEXT[helper.k!].title}</span>`;
+        this.tip('assist');
+      }
+    } else if (!ab.hidden) ab.hidden = true;
+    if (s.flags.duskWarned) this.tip('dusk');
+    if (s.day >= 1 && s.time > 0.5 && s.time < 6 && this.screen === null) this.tip('day1');
+    if (s.survivors.some((v) => v.alive && v.mode === 'down')) this.tip('down');
     this.el.rain.style.opacity = String(Math.max(stormLevel(s) * 0.9, s.time < ((s.flags.rainUntil as number) ?? -1) ? 0.45 : 0));
     const portraitMode = window.innerHeight > window.innerWidth * 1.15 && window.innerWidth < 700;
     this.el.rotate.hidden = !portraitMode || this.rotateDismissed;
@@ -467,7 +578,7 @@ export class Ui {
        <div class="sig"><small>${sel ? 'Signal ' + sel.short : 'Réseau'}${stormLevel(s) > 0.3 ? ' · orage' : ''}</small><b>${sel && !sel.linked ? 'PERDU' : Math.round(sig * 100) + ' %'}</b></div>
        <div class="clock"><small>${dayName(s.day)} · ${fmtClock(s.time)}</small><b>${left > 0 ? 'Nuit dans ' + fmtTime(left) : 'Nuit'}</b><div class="timebar"><i style="width:${Math.min(100, (s.time / s.duration) * 100).toFixed(1)}%"></i></div></div>
        ${synchro(s) > 0 || this.syncFlash > this.now ? `<div class="sync ${this.syncFlash > this.now ? 'pop' : ''}"><small>Synchro</small><b>×${synchro(s)}</b></div>` : ''}
-       <div class="obj-line ${obj.done ? 'done' : ''}">Objectif<br><b>${obj.label}</b>${obj.detail ? ' — ' + obj.detail : ''}</div>`,
+       <div class="obj-line ${obj.done ? 'done' : ''}">Objectif<br><b>${obj.label}</b>${obj.detail ? ' — ' + obj.detail : ''}${sideStatus(s).map((x) => `<span class="side ${x.failed ? 'failed' : x.done ? 'done' : ''}">${x.failed ? '✕' : x.done ? '✓' : '◇'} ${x.label}</span>`).join('')}</div>`,
     );
     const end = canEndDay(s) && s.time > 20;
     const waiting = s.awaiting !== null;
@@ -685,7 +796,7 @@ export class Ui {
     if (this.screen === null) return;
     const s = this.g.s;
     let html = '';
-    const head = (title: string, sub = '', closable = true) => `<header><h2>${title}</h2><small>${sub}</small>${closable ? '<button class="x" data-act="close">✕</button>' : ''}</header>`;
+    const head = (title: string, sub = '', closable = true) => `<header><h2>${title}</h2><small>${sub}</small>${this.screen && GUIDES[this.screen] ? '<button class="x q" data-act="guide" title="Guide de cet écran">?</button>' : ''}${closable ? '<button class="x" data-act="close">✕</button>' : ''}</header>`;
 
     if (this.screen === 'scene') {
       html = ''; // the scene plays in the world, not in a window
@@ -699,6 +810,7 @@ export class Ui {
           <button class="btn ${this.g.hasSave() ? '' : 'primary'}" data-act="new" data-arg="tuto">Nouvelle partie</button>
           ${Tutorial.seen() ? '<button class="btn ghost" data-act="new" data-arg="skip">Sans la formation</button>' : ''}
           <button class="btn ghost" data-act="open" data-arg="profile">Carnet de l’opérateur</button>
+          <button class="btn ghost" data-act="open" data-arg="help">Comment jouer</button>
           <button class="btn ghost" data-act="open" data-arg="about">À propos</button>
           <div class="diffrow"><small>Difficulté</small>${diffSeg()}</div>
         </div>
@@ -755,6 +867,19 @@ export class Ui {
         ${s.ending.map((l, i) => `<p style="animation-delay:${(i * 0.9).toFixed(1)}s">${esc(l)}</p>`).join('')}
         ${s.rescued.length ? `<div class="npcs" style="margin-top:12px">${[...new Set(s.rescued)].map((n) => NPCS[n]).filter(Boolean).map((n) => `<div class="npc"><div class="portrait">${portrait(n.id, n.color)}</div><div><b>${n.name}</b><small>${n.role}</small></div></div>`).join('')}</div>` : ''}
         </div><div class="actions"><button class="btn" data-act="open" data-arg="roster">${ICON.team} Équipe</button><button class="btn primary" data-act="new">Nouvelle partie</button></div></div>`;
+    } else if (this.screen === 'help') {
+      html = `<div class="sheet">${head('Comment jouer', 'Manuel de l’opérateur', false)}<div class="body about manual">
+        ${MANUAL.map((m) => `<h4>${m.title}</h4>${m.lines.map((l) => `<p>${l}</p>`).join('')}`).join('')}
+        </div><div class="actions"><button class="btn" data-act="guide-reset">Revoir les guides et la formation</button><button class="btn primary" data-act="open" data-arg="${this.g.started ? 'settings' : 'title'}">Retour</button></div></div>`;
+    } else if (this.screen === 'mini' && this.mini) {
+      const m = this.mini;
+      const T = MINI_TEXT[m.kind];
+      html = `<div class="sheet mini" data-act="mini-hit">${head(T.title, `${m.name} · essai ${Math.min(3, m.round + 1)} / 3`, false)}<div class="body">
+        <p class="mg-say">${T.say.replace('{n}', m.name)}</p>
+        <div class="mg-bar"><i class="mg-zone" style="left:${(m.zone[0] * 100).toFixed(1)}%;width:${((m.zone[1] - m.zone[0]) * 100).toFixed(1)}%"></i><i class="mg-cur" id="mg-cur"></i></div>
+        <div class="mg-dots">${[0, 1, 2].map((i) => `<i class="${m.hits[i] === undefined ? '' : m.hits[i] > 0.5 ? 'ok' : m.hits[i] > 0 ? 'mid' : 'bad'}"></i>`).join('')}</div>
+        <p class="mg-res">${m.done ? (m.score >= 0.75 ? T.good : m.score > 0.3 ? T.mid : T.bad) : 'Touchez quand le repère est dans la zone.'}</p>
+        </div><div class="actions"><button class="btn primary" data-act="mini-hit">${m.done ? 'Continuer' : T.verb}</button></div></div>`;
     } else if (this.screen === 'about') {
       html = `<div class="sheet">${head('À propos', `Version ${VERSION}`, false)}<div class="body about">
         <h4>Le jeu</h4><p>LAST SIGNAL est un jeu de stratégie et de survie : vous dirigez par radio trois survivants qui décident eux-mêmes s’ils vous obéissent.</p>
@@ -781,6 +906,7 @@ export class Ui {
         <div class="row"><label>Voix parlées<small>${audio.voiceAvailable ? 'Synthèse vocale du navigateur : hors-ligne, qualité variable selon l’appareil.' : 'Non disponible sur ce navigateur.'}</small></label><button class="btn" data-act="voice" ${audio.voiceAvailable ? '' : 'disabled'}>${audio.voice ? 'Activées' : 'Désactivées'}</button></div>
         <div class="row"><label>Profilage<small>FPS, draw calls, triangles, résolution dynamique.</small></label><button class="btn" data-act="perf">${this.showPerf ? 'Affiché' : 'Masqué'}</button></div>
         <div class="row"><label>Formation<small>La rejouer, guidée par Mara, à la prochaine nouvelle partie.</small></label><button class="btn" data-act="tut-reset">Réactiver</button></div>
+        <div class="row"><label>Comment jouer<small>Le manuel complet, et de quoi revoir les guides.</small></label><button class="btn" data-act="open" data-arg="help">Lire</button></div>
         <div class="row"><label>Carnet de l’opérateur<small>Statistiques et succès.</small></label><button class="btn" data-act="open" data-arg="profile">Ouvrir</button></div>
         <div class="row"><label>Signaler un problème<small>Copie un rapport technique (version, écran, erreurs récentes). Rien n’est envoyé automatiquement.</small></label><button class="btn" data-act="report">Copier le rapport</button></div>
         <div class="row"><label>À propos<small>Version ${VERSION} · crédits et confidentialité.</small></label><button class="btn" data-act="open" data-arg="about">Lire</button></div>
@@ -788,6 +914,10 @@ export class Ui {
         <div class="row"><label>Journée en cours<small>Ceux qui sont dehors passeront la nuit dehors.</small></label><button class="btn" data-act="endday">Terminer la journée</button><button class="btn ghost" data-act="new">Nouvelle partie</button></div>
       </div></div></div>`;
     }
+    // first visit: the screen explains itself; « ? » brings the explanation back
+    const guide = this.screen ? GUIDES[this.screen] : null;
+    if (guide && (this.guideOpen || !wasSeen('guide_' + this.screen)))
+      html = html.replace('</header>', `</header><div class="guide"><b>Guide · ${guide.title}</b><ol>${guide.steps.map((x) => `<li>${x}</li>`).join('')}</ol><button class="btn" data-act="guide-ok">Compris</button></div>`);
     this.set(o, html);
     if (this.screen === 'radio') {
       this.typingMsg = -1;

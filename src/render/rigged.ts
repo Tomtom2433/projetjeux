@@ -3,6 +3,7 @@
 // reaching, carrying and falling. The stylised figure stays as a fallback until the model has loaded.
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js';
 
 /** Characters that ship a rigged model in public/models. */
 export const RIGGED = new Set(['mara', 'jo', 'lena', 'ines', 'sacha', 'vogel', 'stranger']);
@@ -242,7 +243,7 @@ interface ClipData {
 /** Characters rigged on the shared skeleton, so every recorded clip plays on all of them. */
 export const CLIP_RIGGED = new Set(['mara', 'jo', 'lena', 'ines', 'sacha', 'vogel', 'stranger']);
 const STAND = new Set(['talk', 'search', 'punch', 'look']);
-const MOVE: Record<string, string> = { injured: 'injured' };
+const MOVE: Record<string, string> = { injured: 'injured', shamble: 'shamble' };
 const qa = new THREE.Quaternion();
 const qb = new THREE.Quaternion();
 const qc = new THREE.Quaternion();
@@ -411,6 +412,30 @@ const loadClips = () =>
   (clipsP ??= fetch('./models/clips.json')
     .then((r) => (r.ok ? (r.json() as Promise<Record<string, ClipData>>) : null))
     .catch(() => null));
+
+/** A pack of infected: copies of one model, each with its own skeleton, all on the shared clips. */
+export function loadHorde(count: number, height: number, shadows: boolean): Promise<ClipFigure[] | null> {
+  return Promise.all([
+    new GLTFLoader()
+      .loadAsync('./models/m-infected.glb')
+      .then((g) => g.scene as THREE.Object3D)
+      .catch(() => null),
+    loadClips(),
+  ]).then(([scene, clips]) => {
+    if (!scene || !clips) return null;
+    const out: ClipFigure[] = [];
+    for (let i = 0; i < count; i++) {
+      const copy = cloneSkinned(scene);
+      // each copy needs its own material so one can fade or flash without the others
+      copy.traverse((o) => {
+        const m = o as THREE.SkinnedMesh;
+        if (m.isSkinnedMesh) m.material = (m.material as THREE.Material).clone();
+      });
+      out.push(new ClipFigure(copy, clips, height * (0.94 + ((i * 37) % 13) / 100), shadows));
+    }
+    return out;
+  });
+}
 
 /** Loads a character model once. Resolves to null if the file is missing or broken. */
 export function loadRig(id: string, height: number, shadows: boolean): Promise<Figure | null> {
