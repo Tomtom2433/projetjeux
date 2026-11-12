@@ -22,6 +22,8 @@ export interface Pose {
   crouch: number;
   /** Arms held away from the body, 0..1. */
   spread: number;
+  /** What the body is busy with, for figures driven by clips: talk, search, punch, look, crouch, carry, injured. */
+  action?: string;
   /** Torso lean forward, radians. */
   lean?: number;
   /** Head tilt forward (talking, nodding) and turn (looking around), radians. */
@@ -216,19 +218,213 @@ export class RiggedFigure {
   }
 }
 
+/** Anything the actors can pose: the procedural rig above, or a figure driven by recorded clips. */
+export interface Figure {
+  root: THREE.Group;
+  materials: THREE.MeshStandardMaterial[];
+  /** True when recorded animation drives the body (it crouches and bends by itself). */
+  clips?: boolean;
+  pose(p: Pose): void;
+}
+
+interface ClipData {
+  dur: number;
+  /** Frames, evenly spaced over the duration. */
+  n: number;
+  /** Per bone: n quaternions, each the rotation away from the rest pose. */
+  rot: Record<string, number[]>;
+  /** Hips offset from rest, in units of hip height. */
+  hips: number[] | null;
+  /** Strides in the clip (locomotion only). */
+  cycles: number;
+}
+
+/** Characters rigged on the shared skeleton, so every recorded clip plays on all of them. */
+export const CLIP_RIGGED = new Set(['mara', 'jo', 'lena', 'ines', 'sacha', 'vogel', 'stranger']);
+const STAND = new Set(['talk', 'search', 'punch', 'look']);
+const MOVE: Record<string, string> = { injured: 'injured' };
+const qa = new THREE.Quaternion();
+const qb = new THREE.Quaternion();
+const qc = new THREE.Quaternion();
+
+/**
+ * A character animated by motion clips (idle, walk, run and actions), blended by weight.
+ * Locomotion clips are scrubbed by the distance covered, so feet stay planted at any speed.
+ */
+export class ClipFigure implements Figure {
+  root = new THREE.Group();
+  materials: THREE.MeshStandardMaterial[] = [];
+  clips = true;
+  private bones: { bone: THREE.Bone; rest: THREE.Quaternion; name: string }[] = [];
+  private hips: { bone: THREE.Bone; rest: THREE.Vector3 } | null = null;
+  private head: { bone: THREE.Bone; world: THREE.Quaternion; inv: THREE.Quaternion } | null = null;
+  private w: Record<string, number> = { idle: 1 };
+  private last = 0;
+  private side = new THREE.Vector3(1, 0, 0);
+
+  constructor(gltf: THREE.Object3D, private data: Record<string, ClipData>, height: number, shadows: boolean) {
+    gltf.removeFromParent();
+    gltf.traverse((o) => {
+      const bone = o as THREE.Bone;
+      if (!bone.isBone) return;
+      if (bone.userData.rest) {
+        bone.quaternion.copy(bone.userData.rest as THREE.Quaternion);
+        bone.position.copy(bone.userData.restPos as THREE.Vector3);
+      } else {
+        bone.userData.rest = bone.quaternion.clone();
+        bone.userData.restPos = bone.position.clone();
+      }
+    });
+    gltf.updateMatrixWorld(true);
+    const box = new THREE.Box3();
+    const pos: Record<string, THREE.Vector3> = {};
+    gltf.traverse((o) => {
+      const m = o as THREE.SkinnedMesh;
+      if (m.isSkinnedMesh) {
+        m.frustumCulled = false;
+        m.castShadow = shadows;
+        const mat = m.material as THREE.MeshStandardMaterial;
+        mat.transparent = true;
+        mat.roughness = 0.85;
+        mat.metalness = 0;
+        mat.color.setScalar(1.35);
+        mat.side = THREE.FrontSide;
+        if (mat.map) mat.map.anisotropy = 4;
+        this.materials.push(mat);
+        m.geometry.computeBoundingBox();
+        box.union(m.geometry.boundingBox!);
+      }
+      const bone = o as THREE.Bone;
+      if (bone.isBone) {
+        this.bones.push({ bone, rest: bone.quaternion.clone(), name: bone.name });
+        pos[bone.name] = bone.getWorldPosition(new THREE.Vector3());
+        if (bone.name === 'Hips') this.hips = { bone, rest: bone.position.clone() };
+        if (bone.name === 'Head') {
+          const world = bone.getWorldQuaternion(new THREE.Quaternion());
+          this.head = { bone, world, inv: world.clone().invert() };
+        }
+      }
+    });
+    const fwd = new THREE.Vector3(0, 0, 1);
+    if (pos.LeftToeBase && pos.LeftFoot) fwd.copy(pos.LeftToeBase).sub(pos.LeftFoot).setY(0).normalize();
+    if (pos.LeftArm && pos.RightArm) this.side.copy(pos.LeftArm).sub(pos.RightArm).setY(0).normalize();
+    const h = Math.max(0.001, box.max.y - box.min.y);
+    const inner = new THREE.Group();
+    inner.add(gltf);
+    inner.scale.setScalar(height / h);
+    inner.rotation.y = -Math.atan2(fwd.x, fwd.z);
+    inner.position.y = -box.min.y * (height / h);
+    this.root.add(inner);
+  }
+
+  private has(name: string) {
+    return !!this.data[name];
+  }
+
+  pose(p: Pose) {
+    const t = p.time ?? 0;
+    const dt = Math.min(0.2, Math.max(0, t - this.last));
+    this.last = t;
+    const amp = Math.min(1, p.gait * 1.7);
+    const run = Math.min(1, Math.max(0, (p.gait - 0.62) / 0.4));
+    const act = p.action ?? '';
+    const stand = STAND.has(act) && this.has(act) ? act : 'idle';
+    const move = MOVE[act] && this.has(MOVE[act]) ? MOVE[act] : 'walk';
+    const target: Record<string, number> = {};
+    target[stand] = (target[stand] ?? 0) + (1 - amp);
+    if (move === 'walk') {
+      target.walk = (target.walk ?? 0) + amp * (1 - run);
+      target.run = amp * run;
+    } else target[move] = (target[move] ?? 0) + amp;
+    // ease between clips so a change of activity never snaps
+    const k = Math.min(1, dt * 7 + (dt === 0 ? 1 : 0));
+    let sum = 0;
+    for (const name of new Set([...Object.keys(this.w), ...Object.keys(target)])) {
+      const v = (this.w[name] ?? 0) + ((target[name] ?? 0) - (this.w[name] ?? 0)) * k;
+      if (v < 0.004 && !target[name]) delete this.w[name];
+      else {
+        this.w[name] = v;
+        sum += v;
+      }
+    }
+    const active = Object.entries(this.w)
+      .filter(([name]) => this.has(name))
+      .map(([name, weight]) => {
+        const c = this.data[name];
+        // strides are scrubbed by distance; everything else runs on the clock
+        const u = c.cycles > 0 && name !== 'idle' && !STAND.has(name) ? (((p.phase / (Math.PI * 2)) % c.cycles) + c.cycles) % c.cycles / c.cycles : ((t / c.dur) % 1 + 1) % 1;
+        const f = u * (c.n - 1);
+        const i0 = Math.floor(f);
+        return { c, weight: weight / (sum || 1), i0, i1: Math.min(c.n - 1, i0 + 1), a: f - i0 };
+      });
+    if (!active.length) return;
+    for (const b of this.bones) {
+      let acc = 0;
+      let first = true;
+      for (const cl of active) {
+        const r = cl.c.rot[b.name];
+        if (!r) continue;
+        qa.fromArray(r, cl.i0 * 4);
+        qb.fromArray(r, cl.i1 * 4);
+        qa.slerp(qb, cl.a);
+        if (first) {
+          qc.copy(qa);
+          acc = cl.weight;
+          first = false;
+        } else {
+          acc += cl.weight;
+          qc.slerp(qa, cl.weight / acc);
+        }
+      }
+      if (first) continue;
+      b.bone.quaternion.copy(b.rest).multiply(qc);
+    }
+    if (this.hips) {
+      const hb = this.hips;
+      let x = 0, y = 0, z = 0;
+      for (const cl of active) {
+        const hp = cl.c.hips;
+        if (!hp) continue;
+        const o0 = cl.i0 * 3, o1 = cl.i1 * 3;
+        // keep the bob and the crouch, drop any drift along the ground
+        y += (hp[o0 + 1] + (hp[o1 + 1] - hp[o0 + 1]) * cl.a) * cl.weight;
+        x += (hp[o0] + (hp[o1] - hp[o0]) * cl.a) * cl.weight * 0.3;
+        z += (hp[o0 + 2] + (hp[o1 + 2] - hp[o0 + 2]) * cl.a) * cl.weight * 0.3;
+      }
+      const hh = hb.rest.y || 1;
+      hb.bone.position.set(hb.rest.x + x * hh, hb.rest.y + y * hh, hb.rest.z + z * hh);
+    }
+    // the head can still turn and nod on top of whatever the body is doing
+    if (this.head && (p.look || p.nod)) {
+      qa.setFromAxisAngle(UP, p.look ?? 0);
+      qb.setFromAxisAngle(this.side, p.nod ?? 0);
+      qa.multiply(qb);
+      this.head.bone.quaternion.multiply(qb.copy(this.head.inv)).multiply(qa).multiply(qb.copy(this.head.world));
+    }
+  }
+}
+
 const cache = new Map<string, Promise<THREE.Object3D | null>>();
 
+let clipsP: Promise<Record<string, ClipData> | null> | null = null;
+const loadClips = () =>
+  (clipsP ??= fetch('./models/clips.json')
+    .then((r) => (r.ok ? (r.json() as Promise<Record<string, ClipData>>) : null))
+    .catch(() => null));
+
 /** Loads a character model once. Resolves to null if the file is missing or broken. */
-export function loadRig(id: string, height: number, shadows: boolean): Promise<RiggedFigure | null> {
+export function loadRig(id: string, height: number, shadows: boolean): Promise<Figure | null> {
   if (!RIGGED.has(id)) return Promise.resolve(null);
+  const clip = CLIP_RIGGED.has(id);
+  const file = clip ? `./models/m-${id}.glb` : `./models/${id}.glb`;
   if (!cache.has(id)) {
     cache.set(
       id,
       new GLTFLoader()
-        .loadAsync(`./models/${id}.glb`)
+        .loadAsync(file)
         .then((g) => g.scene as THREE.Object3D)
         .catch(() => null),
     );
   }
-  return cache.get(id)!.then((scene) => (scene ? new RiggedFigure(scene, height, shadows) : null));
+  return Promise.all([cache.get(id)!, clip ? loadClips() : null]).then(([scene, clips]) => (!scene ? null : clip && clips ? new ClipFigure(scene, clips, height, shadows) : clip ? null : new RiggedFigure(scene, height, shadows)));
 }

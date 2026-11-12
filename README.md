@@ -70,11 +70,14 @@ Glisser pour déplacer la caméra, pincer ou molette pour zoomer, mini-carte pou
   sur celui qui parle (plan serré, plan à deux, plan large), bulle au-dessus de sa tête avec texte progressif,
   didascalies en légende, éclairage propre à la scène (crépuscule, nuit, orage). Un tap termine la réplique,
   le suivant passe à la suite ; « Passer la scène » ou Échap l'interrompt.
-- **Personnages 3D réalistes** (`public/models`) : Mara, Jo, Lena, Inès, Sacha, Vogel et l'inconnu sont des
-  modèles texturés avec squelette, animés par le code (`src/render/rigged.ts`). Le squelette est reconnu par sa
-  forme, pas par ses noms. La foulée suit la distance réellement parcourue (pas de pieds qui glissent), les
-  genoux et les coudes plient, les épaules contrebalancent les hanches, le corps s'incline dans les virages ;
-  au repos, respiration, regard qui balaie et bras qui oscillent.
+- **Personnages 3D réalistes** (`public/models/m-*.glb`) : Mara, Jo, Lena, Inès, Sacha, Vogel et l'inconnu
+  partagent un même squelette standard. Leurs animations sont de vrais clips (`public/models/clips.json`, 336 Ko
+  pour tous) : repos, marche, course, blessé, parler, fouiller, frapper, observer. Les clips sont enregistrés
+  comme écarts à la pose de repos, donc un clip fait pour un personnage se joue sur tous
+  (`ClipFigure` dans `src/render/rigged.ts`). Marche et course défilent selon la distance réellement parcourue :
+  les pieds ne glissent pas, quelle que soit la vitesse. Les transitions entre clips sont fondues.
+- **Brouillard** : les zones non reconnues sont sous une nappe de brume animée, qui se lève là où un survivant a
+  regardé et revient en voile léger quand le renseignement vieillit.
 - **Recrues** (`recruit` dans `src/sim/state.ts`) : Inès et Sacha, une fois ramenés à l'abri, rejoignent l'équipe
   de terrain le lendemain matin, avec leurs aptitudes, leurs compétences et leur fiche (5 survivants au plus).
 - **Son** (`src/ui/audio.ts`) : tout est synthétisé, sans fichier audio. Vent, pluie selon l'orage, crépitement

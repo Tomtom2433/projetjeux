@@ -4,13 +4,13 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import type { GameState, NodeId, Survivor } from '../sim/types';
 import { NODE, NODES, EDGES } from '../sim/world';
-import { stockTotal, survivorPos, threatPos, zoneOf } from '../sim/core';
+import { stockTotal, survivorPos, threatPos, zoneOf, darkness } from '../sim/core';
 import { fmtTime, MODE_LABEL, ORDER_COLOR } from '../sim/text';
 import { objectiveStatus } from '../sim/missions';
 import type { Stage } from './scene';
 import type { City } from './city';
 import { GROUND, makeDash } from './textures';
-import { loadRig, type RiggedFigure } from './rigged';
+import { loadRig, type Figure } from './rigged';
 import { coverer } from '../sim/cover';
 
 export interface UiView {
@@ -139,7 +139,7 @@ interface SurvivorView {
   limbs: { legL: THREE.Mesh; legR: THREE.Mesh; armL: THREE.Mesh; armR: THREE.Mesh };
   size: number;
   /** Realistic skinned model, once loaded; replaces the stylised parts. */
-  rig?: RiggedFigure;
+  rig?: Figure;
   ring: THREE.Mesh;
   crate: THREE.Mesh;
   followers: THREE.Mesh[];
@@ -176,7 +176,7 @@ export interface CineMark {
 /** A secondary character with a realistic model: follows an escort, or plays in a dialogue scene. */
 interface Npc {
   group: THREE.Group;
-  rig: RiggedFigure;
+  rig: Figure;
   x: number;
   z: number;
   heading: number;
@@ -240,7 +240,7 @@ export class Actors {
       g === 'talk' ? [0.12, 0.4 + w * 0.12, 0.55, 1.25 + Math.sin(t * 5.1) * 0.35] : g === 'point' ? [0.05, 1.42, 0.3, 0.12] : g === 'shrug' ? [0.35, 0.35, 1.15, 1.15] : sitting ? [0.5, 0.5, 0.55, 0.55] : [0, 0, 0.22, 0.22];
     for (let i = 0; i < 4; i++) n.arm[i] += (pa[i] - n.arm[i]) * Math.min(1, dt * 9);
     n.group.visible = true;
-    n.group.position.set(n.x, (0.5 - 0.5 * Math.cos(n.walk * 2)) * 0.08 * Math.min(1, n.gait * 2) - 0.5 * n.sit, n.z);
+    n.group.position.set(n.x, (n.rig.clips ? 0 : (0.5 - 0.5 * Math.cos(n.walk * 2)) * 0.08 * Math.min(1, n.gait * 2) - 0.5 * n.sit), n.z);
     n.group.rotation.set(0, n.heading, Math.sin(n.walk) * 0.03 * Math.min(1, n.gait * 2), 'YXZ');
     n.rig.pose({
       phase: n.walk,
@@ -249,6 +249,7 @@ export class Actors {
       armR: n.arm[1],
       elbowL: n.arm[2],
       elbowR: n.arm[3],
+      action: g !== 'none' ? 'talk' : '',
       crouch: n.sit,
       spread: g === 'shrug' ? 0.35 : 0,
       nod: g !== 'none' ? Math.sin(t * (g === 'nod' ? 6 : 3.4)) * (g === 'nod' ? 0.22 : 0.08) : 0,
@@ -323,6 +324,7 @@ export class Actors {
   private dash = makeDash();
   private fogCanvas = document.createElement('canvas');
   private fogTex: THREE.CanvasTexture;
+  private fogMat!: THREE.ShaderMaterial;
   private fogTimer = 0;
   private nodeTags = new Map<NodeId, HTMLDivElement>();
   private pulses: { mesh: THREE.Mesh; t: number }[] = [];
@@ -389,7 +391,27 @@ export class Actors {
     const fuv = fogGeo.attributes.uv;
     const fpos = fogGeo.attributes.position;
     for (let i = 0; i < fuv.count; i++) fuv.setXY(i, (fpos.getX(i) - GROUND.x0) / (GROUND.x1 - GROUND.x0), 1 - (fpos.getZ(i) - GROUND.z0) / (GROUND.z1 - GROUND.z0));
-    const fog = new THREE.Mesh(fogGeo, new THREE.MeshBasicMaterial({ map: this.fogTex, transparent: true, depthTest: false, depthWrite: false, toneMapped: false }));
+    // Unscouted ground lies under a drifting bank of fog; the canvas only says where it has been lifted.
+    this.fogMat = new THREE.ShaderMaterial({
+      transparent: true,
+      depthTest: false,
+      depthWrite: false,
+      uniforms: { mask: { value: this.fogTex }, t: { value: 0 }, night: { value: 0 } },
+      vertexShader: 'varying vec2 vUv; varying vec2 vW; void main(){ vUv = uv; vW = position.xz; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+      fragmentShader: `
+        uniform sampler2D mask; uniform float t; uniform float night; varying vec2 vUv; varying vec2 vW;
+        float h(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+        float n(vec2 p){ vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
+          return mix(mix(h(i), h(i + vec2(1, 0)), f.x), mix(h(i + vec2(0, 1)), h(i + vec2(1, 1)), f.x), f.y); }
+        void main(){
+          float a = texture2D(mask, clamp(vUv, 0.0, 1.0)).a;
+          vec2 p = vW * 0.045;
+          float f = n(p + vec2(t * 0.05, t * 0.02)) * 0.55 + n(p * 2.3 - vec2(t * 0.04, -t * 0.03)) * 0.3 + n(p * 5.1 + t * 0.06) * 0.15;
+          vec3 col = mix(vec3(0.10, 0.12, 0.18), vec3(0.50, 0.54, 0.62), f) * mix(1.0, 0.55, night);
+          gl_FragColor = vec4(col, clamp(a * (0.62 + 0.55 * f), 0.0, 0.93));
+        }`,
+    });
+    const fog = new THREE.Mesh(fogGeo, this.fogMat);
     fog.position.y = 0.05;
     fog.renderOrder = 4;
     scene.add(fog);
@@ -560,13 +582,13 @@ export class Actors {
     const Z = (z: number) => (z - GROUND.z0) * sx;
     g.globalCompositeOperation = 'source-over';
     g.clearRect(0, 0, c.width, c.height);
-    g.fillStyle = 'rgba(7,10,20,0.42)';
+    g.fillStyle = 'rgba(0,0,0,1)';
     g.fillRect(0, 0, c.width, c.height);
     g.globalCompositeOperation = 'destination-out';
     const clear = (id: NodeId) => {
       const it = s.intel[id];
       if (it.seenAt < 0) return 0;
-      return Math.max(0.5, 1 - ((s.time - it.seenAt) / 180) * 0.5);
+      return Math.max(0.6, 1 - ((s.time - it.seenAt) / 180) * 0.4);
     };
     const hole = (x: number, z: number, rad: number, a: number) => {
       if (a <= 0) return;
@@ -588,6 +610,8 @@ export class Actors {
   sync(s: GameState, ui: UiView, dt: number, t: number) {
     const stage = this.stage;
     this.dash.offset.x = -t * 0.8;
+    this.fogMat.uniforms.t.value = t;
+    this.fogMat.uniforms.night.value = darkness(s);
     this.fogTimer -= dt;
     if (this.fogTimer <= 0) {
       this.fogTimer = 0.35;
@@ -679,7 +703,7 @@ export class Actors {
         Math.sin(v.walk) * (v.rig ? 0.035 : 0.07) * Math.min(1, v.gait * 2) - v.turn * 0.12 * Math.min(1, v.gait * 2) + (fighting ? Math.sin(t * 9) * 0.08 : 0),
         'YXZ',
       );
-      v.body.position.set(Math.sin(v.heading) * (lunge * 0.35 - v.hit * 0.3), carried ? 2.25 : 0.35 * v.fall + (0.5 - 0.5 * Math.cos(v.walk * 2)) * 0.09 * Math.min(1, v.gait * 2) - (v.rig ? 0.5 * v.sit * (1 - v.fall) : 0), Math.cos(v.heading) * (lunge * 0.35 - v.hit * 0.3));
+      v.body.position.set(Math.sin(v.heading) * (lunge * 0.35 - v.hit * 0.3), carried ? 2.25 : 0.35 * v.fall + (0.5 - 0.5 * Math.cos(v.walk * 2)) * 0.09 * Math.min(1, v.gait * 2) - (v.rig && !v.rig.clips ? 0.5 * v.sit * (1 - v.fall) : 0), Math.cos(v.heading) * (lunge * 0.35 - v.hit * 0.3));
       const breath = idle ? 1 + Math.sin(t * 2.1 + v.phase) * 0.014 : 1;
       v.sit += ((cm && crouch ? 0.7 : crouch || resting ? 1 : searching ? 0.4 : 0) - v.sit) * Math.min(1, dt * 4);
       v.body.scale.set(v.size, v.size * (v.rig ? 1 : breath * (crouch ? 0.7 : resting ? 0.62 : searching ? 0.86 : 1)), v.size);
@@ -745,6 +769,7 @@ export class Actors {
           armR: v.arm[1],
           elbowL: v.arm[2],
           elbowR: v.arm[3],
+          action: down ? '' : fighting ? 'punch' : searching ? 'search' : observing || crouch ? 'look' : cm && cm.gesture !== 'none' ? 'talk' : sv.health < 40 ? 'injured' : '',
           crouch: v.sit,
           spread: observing ? 0.25 : cm?.gesture === 'shrug' ? 0.35 : 0,
           lean: down ? 0 : searching ? 0.5 + Math.sin(t * 6) * 0.08 : fighting ? 0.18 + lunge * 0.3 : 0,
