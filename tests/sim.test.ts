@@ -319,3 +319,26 @@ describe('tactical items', () => {
     expect(s.threats[0].target).toBeNull();
   });
 });
+
+describe('recruits', () => {
+  it('a rescued nurse joins the team the next morning and can take orders', () => {
+    const s = newGame(21);
+    const ev: SimEvent[] = [];
+    s.persistent.inesRescued = true;
+    endDay(s, ev);
+    nextDay(s, ev);
+    expect(s.day).toBe(2);
+    const ines = s.survivors.find((v) => v.id === 'ines');
+    expect(ines).toBeTruthy();
+    expect(s.survivors.length).toBe(4);
+    expect(s.survivors[0].relations.ines).toBeGreaterThan(0);
+    s.awaiting = null;
+    ines!.trust = 100;
+    ines!.courage = 100;
+    issueOrder(s, 'ines', 'scout', 'gate', ev);
+    for (let i = 0; i < 40; i++) step(s, 0.25, ev);
+    expect(ines!.order?.type ?? ines!.mode).toBeTruthy();
+    nextDay(s, ev); // no duplicate on later days
+    expect(s.survivors.filter((v) => v.id === 'ines').length).toBe(1);
+  });
+});

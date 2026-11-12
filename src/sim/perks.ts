@@ -28,6 +28,9 @@ export const PERKS: Record<string, Perk[]> = {
   ],
 };
 
+PERKS.ines = [PERKS.mara[0], PERKS.mara[2], PERKS.lena[3], PERKS.mara[1]];
+PERKS.sacha = [PERKS.jo[3], PERKS.jo[0], PERKS.jo[1], PERKS.lena[3]];
+
 export const LEVELS = [0, 40, 100, 180, 280];
 
 /** Aptitude of a survivor for an order type, 1..5 (3 when unknown). */

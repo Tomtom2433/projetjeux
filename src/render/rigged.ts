@@ -5,22 +5,30 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 
 /** Characters that ship a rigged model in public/models. */
-export const RIGGED = new Set(['mara', 'jo', 'lena']);
+export const RIGGED = new Set(['mara', 'jo', 'lena', 'ines', 'sacha', 'vogel', 'stranger']);
 
 export interface Pose {
-  /** -1..1 walking phase (sine). */
-  stride: number;
-  /** Amplitude of the gait: 0 standing, 1 running. */
+  /** Walk cycle angle, advanced by the distance actually covered. */
+  phase: number;
+  /** Stride amplitude: 0 standing, about 0.6 walking, 1+ running. */
   gait: number;
-  /** Arm targets in radians, 0 = hanging, positive = raised forward. */
+  /** Upper-arm raise in radians, 0 = hanging, positive = forward. */
   armL: number;
   armR: number;
+  /** Elbow bend in radians, 0 = straight. */
+  elbowL: number;
+  elbowR: number;
   /** 0 standing .. 1 crouched. */
   crouch: number;
-  /** Arms spread sideways (binoculars), 0..1. */
+  /** Arms held away from the body, 0..1. */
   spread: number;
-  /** Head tilt forward, radians (talking, nodding). */
+  /** Torso lean forward, radians. */
+  lean?: number;
+  /** Head tilt forward (talking, nodding) and turn (looking around), radians. */
   nod?: number;
+  look?: number;
+  /** Clock for breathing and small idle motion. */
+  time?: number;
 }
 
 interface BoneRef {
@@ -47,6 +55,8 @@ export class RiggedFigure {
   private swingSign = 1;
   /** Sign that lowers the left arm when rotated about the forward axis. */
   private dropSign = 1;
+  /** Sign that turns the left side toward the front when rotated about the vertical axis. */
+  private yawSign = 1;
   /** Joints found by where they sit on the body, not by their names: generated rigs label them inconsistently. */
   private arm: { L: string[]; R: string[] } = { L: [], R: [] };
   private leg: { L: string[]; R: string[] } = { L: [], R: [] };
@@ -144,6 +154,7 @@ export class RiggedFigure {
     this.swingSign = probe.dot(this.fwdAxis) >= 0 ? 1 : -1;
     const dropV = this.sideAxis.clone().applyAxisAngle(this.fwdAxis, 0.3);
     this.dropSign = dropV.y <= 0 ? 1 : -1;
+    this.yawSign = this.sideAxis.clone().applyAxisAngle(UP, 0.3).dot(this.fwdAxis) >= 0 ? 1 : -1;
     const h = Math.max(0.001, box.max.y - box.min.y);
     const inner = new THREE.Group();
     inner.add(gltf);
@@ -167,23 +178,41 @@ export class RiggedFigure {
     const S = this.sideAxis;
     const F = this.fwdAxis;
     const f = this.swingSign;
-    const swing = p.stride * (0.35 + p.gait * 0.4);
+    const y = this.yawSign;
+    const t = p.time ?? 0;
+    const amp = Math.min(1, p.gait * 1.7); // how much of a stride is showing
+    const run = Math.min(1, Math.max(0, (p.gait - 0.62) / 0.4));
     const squat = p.crouch * 0.9;
-    for (const [leg, s] of [[this.leg.L, 1], [this.leg.R, -1]] as const) {
-      const a = swing * s;
-      // thigh swings; the trailing leg bends at the knee, and both bend when crouched
-      this.turn(leg[0], S, (a + squat) * f);
-      this.turn(leg[1], S, -(Math.max(0, -a) * 1.1 + squat * 1.9) * f);
-      this.turn(leg[2], S, squat * 0.9 * f);
+    const sinP = Math.sin(p.phase);
+    for (const [leg, side] of [[this.leg.L, 0], [this.leg.R, Math.PI]] as const) {
+      const ph = p.phase + side;
+      const s = Math.sin(ph);
+      const fwd = Math.max(0, Math.cos(ph)); // the leg is swinging forward, off the ground
+      // thigh swings; the knee folds while the leg comes through and gives a little on landing
+      const thigh = (0.4 + run * 0.14) * amp * s + squat + run * 0.08 * amp;
+      const knee = ((0.7 + run * 0.65) * fwd * fwd + 0.12 * Math.max(0, s) + 0.06) * amp + squat * 1.9;
+      const ankle = (0.2 * Math.max(0, s) - 0.32 * Math.max(0, -s) * (1 - fwd)) * amp + squat * 0.9;
+      this.turn(leg[0], S, thigh * f);
+      this.turn(leg[1], S, -knee * f);
+      this.turn(leg[2], S, ankle * f);
     }
-    for (const [arm, k, target] of [[this.arm.L, 1, p.armL], [this.arm.R, -1, p.armR]] as const) {
-      // upper arm, forearm, hand. From the T-pose: down along the body, then swing forward.
-      const down = (1.32 - p.spread * 0.9) * this.dropSign * k;
-      this.turn(arm[0], F, down, S, target * f);
-      this.turn(arm[1], S, (0.22 + Math.max(0, target) * 0.6) * f);
+    // arms swing against the legs, loose at the elbow; a runner carries them bent
+    for (const [arm, k, raise, elbow, side] of [[this.arm.L, 1, p.armL, p.elbowL, Math.PI], [this.arm.R, -1, p.armR, p.elbowR, 0]] as const) {
+      const ph = p.phase + side;
+      const free = Math.max(0, 1 - raise * 1.4); // a busy arm does not swing
+      const sway = Math.sin(t * 1.25 + side) * 0.03 * (1 - amp);
+      const swing = ((0.36 + run * 0.22) * Math.sin(ph) + run * 0.04) * amp * free + sway;
+      const hang = (1.43 - p.spread * 0.9 - 0.06 * amp) * this.dropSign * k;
+      this.turn(arm[0], F, hang, S, (raise + swing) * f);
+      const bend = elbow + ((0.16 + run * 0.95) + 0.3 * Math.max(0, Math.sin(ph - 0.5))) * amp * free;
+      this.turn(arm[1], UP, bend * y * k);
+      this.turn(arm[2], UP, 0.12 * y * k); // a relaxed wrist
     }
-    this.turn(this.spine, S, (p.gait * 0.1 + p.crouch * 0.45) * f);
-    this.turn(this.neck, S, (-p.crouch * 0.3 + (p.nod ?? 0)) * f);
+    // shoulders turn against the hips; the torso leans into speed and breathes at rest
+    const twist = -0.15 * amp * sinP * y;
+    const breathe = Math.sin(t * 1.9) * 0.018 * (1 - amp);
+    this.turn(this.spine, S, ((p.lean ?? 0) + amp * (0.05 + run * 0.16) + p.crouch * 0.45 + breathe) * f, UP, twist);
+    this.turn(this.neck, S, (-p.crouch * 0.3 - amp * run * 0.1 - (p.lean ?? 0) * 0.5 + (p.nod ?? 0)) * f, UP, (p.look ?? 0) * y - twist * 0.8);
   }
 }
 

@@ -70,8 +70,13 @@ Glisser pour déplacer la caméra, pincer ou molette pour zoomer, mini-carte pou
   sur celui qui parle (plan serré, plan à deux, plan large), bulle au-dessus de sa tête avec texte progressif,
   didascalies en légende, éclairage propre à la scène (crépuscule, nuit, orage). Un tap termine la réplique,
   le suivant passe à la suite ; « Passer la scène » ou Échap l'interrompt.
-- **Personnages 3D réalistes** (`public/models`) : Mara, Jo et Lena sont des modèles texturés avec squelette,
-  animés par le code (marche, course, accroupi, port). Le squelette est reconnu par sa forme, pas par ses noms.
+- **Personnages 3D réalistes** (`public/models`) : Mara, Jo, Lena, Inès, Sacha, Vogel et l'inconnu sont des
+  modèles texturés avec squelette, animés par le code (`src/render/rigged.ts`). Le squelette est reconnu par sa
+  forme, pas par ses noms. La foulée suit la distance réellement parcourue (pas de pieds qui glissent), les
+  genoux et les coudes plient, les épaules contrebalancent les hanches, le corps s'incline dans les virages ;
+  au repos, respiration, regard qui balaie et bras qui oscillent.
+- **Recrues** (`recruit` dans `src/sim/state.ts`) : Inès et Sacha, une fois ramenés à l'abri, rejoignent l'équipe
+  de terrain le lendemain matin, avec leurs aptitudes, leurs compétences et leur fiche (5 survivants au plus).
 - **Son** (`src/ui/audio.ts`) : tout est synthétisé, sans fichier audio. Vent, pluie selon l'orage, crépitement
   du brasero quand la caméra est sur la cour, nappe musicale qui se tend avec le danger (battement de cœur),
   bruitages (coup, grognement, fusée, Synchro, ordre reçu ou refusé, fin de journée). Quatre volumes séparés.

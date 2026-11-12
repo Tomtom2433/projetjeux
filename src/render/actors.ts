@@ -151,6 +151,11 @@ interface SurvivorView {
   hit: number;
   fall: number;
   sit: number;
+  /** Smoothed stride amplitude (0 standing, 1 running) and turn rate. */
+  gait: number;
+  turn: number;
+  /** Smoothed arm pose for the rigged model: raise L/R, elbow L/R. */
+  arm: [number, number, number, number];
   phase: number;
 }
 
@@ -168,6 +173,21 @@ export interface CineMark {
   sit: boolean;
   gesture: 'talk' | 'point' | 'shrug' | 'nod' | 'none';
 }
+/** A secondary character with a realistic model: follows an escort, or plays in a dialogue scene. */
+interface Npc {
+  group: THREE.Group;
+  rig: RiggedFigure;
+  x: number;
+  z: number;
+  heading: number;
+  walk: number;
+  gait: number;
+  used: boolean;
+  arm: [number, number, number, number];
+  sit: number;
+}
+const NPC_HEIGHT: Record<string, number> = { ines: 2.12, sacha: 2.3, vogel: 2.2, stranger: 2.22 };
+const FOLLOWER_ID: (string | null)[] = ['ines', null, 'sacha', null, 'vogel', 'stranger'];
 const EXTRA_GEO: Record<string, number> = { ines: 0, patient: 1, sacha: 2, vogel: 4, stranger: 5 };
 
 export class Actors {
@@ -175,6 +195,69 @@ export class Actors {
   /** Set while a dialogue scene plays: characters go to their marks and act instead of following the simulation. */
   private cine: Record<string, CineMark> | null = null;
   private extras = new Map<string, { mesh: THREE.Mesh; x: number; z: number; heading: number }>();
+  private npcs = new Map<string, Npc>();
+  get count() {
+    return this.views.size;
+  }
+
+  /** Put a secondary character somewhere this frame. Returns false while their model is not loaded. */
+  private placeNpc(id: string, x: number, z: number, face: number | null, dt: number, t: number, o: { walk?: boolean; sit?: boolean; gesture?: CineMark['gesture'] } = {}): boolean {
+    const n = this.npcs.get(id);
+    if (!n) return false;
+    const px = n.x;
+    const pz = n.z;
+    const dx = x - n.x;
+    const dz = z - n.z;
+    const dist = Math.hypot(dx, dz);
+    if (!n.group.visible || dist > 14) {
+      // first frame on stage: come in from a few steps away rather than popping onto the mark
+      n.x = o.walk ? x - 4.5 : x;
+      n.z = o.walk ? z + 3.5 : z;
+      n.heading = face ?? 0;
+    } else if (o.walk) {
+      const step = Math.min(dist, 2.6 * dt);
+      if (dist > 0.02) {
+        n.x += (dx / dist) * step;
+        n.z += (dz / dist) * step;
+      }
+    } else {
+      const k = 1 - Math.pow(0.01, dt);
+      n.x += dx * k;
+      n.z += dz * k;
+    }
+    const moved = Math.min(1.2, Math.hypot(n.x - px, n.z - pz));
+    n.gait += (Math.min(1.2, dt > 0 ? moved / dt / 2.6 : 0) - n.gait) * Math.min(1, dt * 7);
+    n.walk += moved * 3.1;
+    const want = moved > 0.004 ? Math.atan2(n.x - px, n.z - pz) : face ?? n.heading;
+    let d = want - n.heading;
+    d = Math.atan2(Math.sin(d), Math.cos(d));
+    n.heading += d * Math.min(1, dt * 6);
+    const sitting = !!o.sit && n.gait < 0.15;
+    n.sit += ((sitting ? 1 : 0) - n.sit) * Math.min(1, dt * 4);
+    const g = n.gait < 0.15 ? o.gesture ?? 'none' : 'none';
+    const w = Math.sin(t * 4.3 + n.walk);
+    const pa: [number, number, number, number] =
+      g === 'talk' ? [0.12, 0.4 + w * 0.12, 0.55, 1.25 + Math.sin(t * 5.1) * 0.35] : g === 'point' ? [0.05, 1.42, 0.3, 0.12] : g === 'shrug' ? [0.35, 0.35, 1.15, 1.15] : sitting ? [0.95, 0.95, 0.75, 0.75] : [0, 0, 0.22, 0.22];
+    for (let i = 0; i < 4; i++) n.arm[i] += (pa[i] - n.arm[i]) * Math.min(1, dt * 9);
+    n.group.visible = true;
+    n.group.position.set(n.x, (0.5 - 0.5 * Math.cos(n.walk * 2)) * 0.08 * Math.min(1, n.gait * 2) - 0.5 * n.sit, n.z);
+    n.group.rotation.set(0, n.heading, Math.sin(n.walk) * 0.03 * Math.min(1, n.gait * 2), 'YXZ');
+    n.rig.pose({
+      phase: n.walk,
+      gait: n.gait,
+      armL: n.arm[0],
+      armR: n.arm[1],
+      elbowL: n.arm[2],
+      elbowR: n.arm[3],
+      crouch: n.sit,
+      spread: g === 'shrug' ? 0.35 : 0,
+      nod: g !== 'none' ? Math.sin(t * (g === 'nod' ? 6 : 3.4)) * (g === 'nod' ? 0.22 : 0.08) : 0,
+      look: n.gait < 0.1 && g === 'none' && !o.walk ? Math.sin(t * 0.5 + n.walk) * 0.4 : 0,
+      time: t,
+    });
+    n.used = true;
+    return true;
+  }
 
   setCine(marks: Record<string, CineMark> | null) {
     this.cine = marks;
@@ -193,6 +276,8 @@ export class Actors {
   headPos(id: string): { x: number; y: number; z: number } | null {
     const v = this.views.get(id);
     if (v) return { x: v.x, y: this.cine?.[id]?.sit ? 2.3 : 2.9, z: v.z };
+    const n = this.npcs.get(id);
+    if (n?.group.visible) return { x: n.x, y: this.cine?.[id]?.sit ? 2.2 : 2.8, z: n.z };
     const e = this.extras.get(id);
     return e ? { x: e.x, y: this.cine?.[id]?.sit ? 2.0 : 2.7, z: e.z } : null;
   }
@@ -202,6 +287,10 @@ export class Actors {
     for (const [id, e] of this.extras) {
       const m = this.cine[id];
       if (!m) continue;
+      if (this.placeNpc(id, m.x, m.z, m.face, dt, t, { walk: true, sit: m.sit, gesture: m.gesture })) {
+        e.mesh.visible = false;
+        continue;
+      }
       const dx = m.x - e.x;
       const dz = m.z - e.z;
       const dist = Math.hypot(dx, dz);
@@ -313,6 +402,18 @@ export class Actors {
       this.nodeTags.set(n.id, d);
     }
     for (const sv of s.survivors) this.addSurvivor(sv);
+    // secondary characters who are not on the team share one realistic model each
+    for (const id of Object.keys(NPC_HEIGHT)) {
+      if (s.survivors.some((v) => v.id === id)) continue;
+      void loadRig(id, NPC_HEIGHT[id], this.stage.q.shadows).then((rig) => {
+        if (!rig || !this.root.parent) return;
+        const group = new THREE.Group();
+        group.add(rig.root);
+        group.visible = false;
+        this.root.add(group);
+        this.npcs.set(id, { group, rig, x: 0, z: 0, heading: 0, walk: 0, gait: 0, used: false, arm: [0, 0, 0.22, 0.22], sit: 0 });
+      });
+    }
   }
 
   private addSurvivor(sv: Survivor) {
@@ -364,9 +465,9 @@ export class Actors {
     tag.style.setProperty('--c', sv.color);
     this.labels.appendChild(tag);
     const p = survivorPos(sv);
-    this.views.set(sv.id, { group, body, mat, limbs, size, ring, crate, followers, tag, x: p.x, z: p.z, heading: 0, walk: 0, hit: 0, fall: 0, sit: 0, phase: this.views.size * 2.1 });
+    this.views.set(sv.id, { group, body, mat, limbs, size, ring, crate, followers, tag, x: p.x, z: p.z, heading: 0, walk: 0, hit: 0, fall: 0, sit: 0, gait: 0, turn: 0, arm: [0, 0, 0.3, 0.3], phase: this.views.size * 2.1 });
     const view = this.views.get(sv.id)!;
-    void loadRig(sv.id, 2.3, shadows).then((rig) => {
+    void loadRig(sv.id, NPC_HEIGHT[sv.id] ?? 2.3, shadows).then((rig) => {
       if (!rig || this.views.get(sv.id) !== view) return;
       for (const child of [...body.children]) child.visible = false;
       body.add(rig.root);
@@ -510,6 +611,8 @@ export class Actors {
       const ox = !p.moving ? Math.cos(slot * 2.1 + 0.6) * (slot ? 3.4 : 0) : 0;
       const oz = !p.moving ? Math.sin(slot * 2.1 + 0.6) * (slot ? 3.4 : 0) : 0;
       const cm = this.cine?.[sv.id];
+      const px = v.x;
+      const pz = v.z;
       const tx = cm ? cm.x : p.x + ox;
       const tz = cm ? cm.z : p.z + oz;
       const dx = tx - v.x;
@@ -535,9 +638,14 @@ export class Actors {
         // turn toward the direction of travel instead of snapping
         let d = Math.atan2(dx, dz) - v.heading;
         d = Math.atan2(Math.sin(d), Math.cos(d));
-        v.heading += d * Math.min(1, dt * 9);
-      }
-      v.walk += dt * (moving ? (sv.mode === 'flee' ? 13 : 8.5) : 0);
+        v.turn += (d - v.turn) * Math.min(1, dt * 8);
+        v.heading += d * Math.min(1, dt * 6.5);
+      } else v.turn *= Math.max(0, 1 - dt * 6);
+      // The stride follows the ground actually covered, so feet do not slide and the gait eases in and out.
+      const moved = Math.min(1.2, Math.hypot(v.x - px, v.z - pz));
+      const speed = dt > 0 ? moved / dt : 0;
+      v.gait += (Math.min(1.2, speed / 2.6) - v.gait) * Math.min(1, dt * 7);
+      v.walk += moved * 3.1;
       const inside = !cm && NODE[p.node].kind === 'interior' && !p.moving && dist < 1.5;
       if (inside) (occupied[p.node] ??= []).push(sv.short);
       v.group.visible = !inside;
@@ -563,17 +671,18 @@ export class Actors {
         let d = cm.face - v.heading;
         d = Math.atan2(Math.sin(d), Math.cos(d));
         v.heading += d * Math.min(1, dt * 5);
-      } else if (idle && !observing && !carried) v.heading += Math.sin(t * 0.45 + v.phase) * dt * 0.25; // looking around
+      } else if (idle && !observing && !carried && !v.rig) v.heading += Math.sin(t * 0.45 + v.phase) * dt * 0.25; // looking around
       v.body.rotation.set(
-        -1.45 * v.fall + (down ? 0 : searching ? 0.55 + Math.sin(t * 6) * 0.12 : fighting ? 0.2 + lunge * 0.3 : moving ? 0.12 : 0) - v.hit * 0.4,
+        -1.45 * v.fall + (down || v.rig ? 0 : searching ? 0.55 + Math.sin(t * 6) * 0.12 : fighting ? 0.2 + lunge * 0.3 : moving ? 0.12 : 0) - v.hit * 0.4,
         v.heading,
-        moving ? Math.sin(v.walk) * 0.07 : fighting ? Math.sin(t * 9) * 0.12 : 0,
+        // sway with each step, and bank a little into a turn
+        Math.sin(v.walk) * (v.rig ? 0.035 : 0.07) * Math.min(1, v.gait * 2) - v.turn * 0.12 * Math.min(1, v.gait * 2) + (fighting ? Math.sin(t * 9) * 0.08 : 0),
         'YXZ',
       );
-      v.body.position.set(Math.sin(v.heading) * (lunge * 0.35 - v.hit * 0.3), carried ? 2.25 : 0.35 * v.fall + (moving ? Math.abs(Math.sin(v.walk)) * 0.14 : 0) - (cm && crouch && v.rig ? 0.5 * v.sit : 0), Math.cos(v.heading) * (lunge * 0.35 - v.hit * 0.3));
+      v.body.position.set(Math.sin(v.heading) * (lunge * 0.35 - v.hit * 0.3), carried ? 2.25 : 0.35 * v.fall + (0.5 - 0.5 * Math.cos(v.walk * 2)) * 0.09 * Math.min(1, v.gait * 2) - (v.rig ? 0.5 * v.sit * (1 - v.fall) : 0), Math.cos(v.heading) * (lunge * 0.35 - v.hit * 0.3));
       const breath = idle ? 1 + Math.sin(t * 2.1 + v.phase) * 0.014 : 1;
-      v.sit += ((crouch ? 1 : 0) - v.sit) * Math.min(1, dt * 4);
-      v.body.scale.set(v.size, v.size * breath * (cm && v.rig ? 1 : crouch ? 0.7 : resting ? 0.62 : searching ? 0.86 : 1), v.size);
+      v.sit += ((crouch || resting ? 1 : searching ? 0.4 : 0) - v.sit) * Math.min(1, dt * 4);
+      v.body.scale.set(v.size, v.size * (v.rig ? 1 : breath * (crouch ? 0.7 : resting ? 0.62 : searching ? 0.86 : 1)), v.size);
       // limbs: stride, reach, guard
       const stride = moving ? Math.sin(v.walk) * (sv.mode === 'flee' ? 0.95 : 0.65) : 0;
       const carrying = stockTotal(sv.carrying) > 0 || !!(sv.helping && s.survivors.some((o) => o.carriedBy === sv.id));
@@ -610,14 +719,38 @@ export class Actors {
       L.armL.rotation.z = observing ? -0.5 : -0.08;
       L.armR.rotation.z = observing ? 0.5 : 0.08;
       if (v.rig) {
+        // upper-arm raise and elbow bend for each arm, by what the survivor is doing
+        const w = Math.sin(t * 4.3 + v.phase);
+        let pa: [number, number, number, number] = [0, 0, 0.22, 0.22];
+        if (down) pa = [2.5, 2.3, 0.3, 0.5];
+        else if (carrying) pa = [0.75, 0.75, 1.35, 1.35];
+        else if (fighting) pa = [0.7, 1.15 + lunge * 0.7, 1.5, 0.9 - lunge * 0.7];
+        else if (searching) pa = [0.95 + Math.sin(t * 7) * 0.3, 0.95 - Math.sin(t * 7) * 0.3, 0.8 - Math.sin(t * 7) * 0.3, 0.8 + Math.sin(t * 7) * 0.3];
+        else if (observing) pa = [1.05, 1.05, 2.15, 2.15];
+        else if (cm && !moving) {
+          const g = cm.gesture;
+          if (g === 'talk') pa = [0.12 + Math.sin(t * 2.3 + v.phase) * 0.06, 0.4 + w * 0.12, 0.55, 1.25 + Math.sin(t * 5.1 + v.phase) * 0.35];
+          else if (g === 'point') pa = [0.05, 1.42 + w * 0.04, 0.3, 0.12];
+          else if (g === 'shrug') pa = [0.35, 0.35, 1.15 + w * 0.08, 1.15 - w * 0.08];
+          else if (g === 'nod') pa = [0.05, 0.05, 0.35, 0.35];
+          else if (crouch) pa = [0.95, 0.95, 0.75 + w * 0.05, 0.75 - w * 0.05]; // hands to the fire
+        } else if (crouch || resting) pa = [0.55, 0.55, 0.95, 0.95];
+        const ka = Math.min(1, dt * 9);
+        for (let i = 0; i < 4; i++) v.arm[i] += (pa[i] - v.arm[i]) * ka;
+        const still = v.gait < 0.1 && !down;
         v.rig.pose({
-          stride: moving ? Math.sin(v.walk) : 0,
-          gait: !moving ? 0 : sv.mode === 'flee' ? 1 : 0.5,
-          armL: -L.armL.rotation.x,
-          armR: -L.armR.rotation.x,
-          crouch: cm ? v.sit : crouch || resting ? 1 : searching ? 0.45 : 0,
-          spread: observing ? 0.5 : cm?.gesture === 'shrug' ? 0.35 : 0,
+          phase: v.walk,
+          gait: down || carried ? 0 : v.gait,
+          armL: v.arm[0],
+          armR: v.arm[1],
+          elbowL: v.arm[2],
+          elbowR: v.arm[3],
+          crouch: v.sit,
+          spread: observing ? 0.25 : cm?.gesture === 'shrug' ? 0.35 : 0,
+          lean: down ? 0 : searching ? 0.5 + Math.sin(t * 6) * 0.08 : fighting ? 0.18 + lunge * 0.3 : 0,
           nod: cm && cm.gesture !== 'none' ? Math.sin(t * (cm.gesture === 'nod' ? 6 : 3.4) + v.phase) * (cm.gesture === 'nod' ? 0.22 : 0.08) : 0,
+          look: still && !cm && !fighting && !searching ? Math.sin(t * 0.45 + v.phase) * 0.55 + Math.sin(t * 1.3 + v.phase * 2) * 0.12 : 0,
+          time: t + v.phase,
         });
       }
       v.ring.visible = !carried && !cm;
@@ -652,6 +785,8 @@ export class Actors {
         f.position.set(v.x - Math.sin(v.heading) * back + Math.cos(v.heading) * side, 0, v.z - Math.cos(v.heading) * back - Math.sin(v.heading) * side);
         f.rotation.set(i === 1 ? 0.25 : 0, v.heading, i === 1 ? 0.2 : 0, 'YXZ');
         f.position.y = moving ? Math.abs(Math.sin(v.walk * (i === 3 ? 1.5 : 1) + i)) * 0.1 : 0;
+        const nid = FOLLOWER_ID[i];
+        if (nid && this.placeNpc(nid, f.position.x, f.position.z, v.heading, dt, t)) f.visible = false;
       });
 
       // tag
@@ -674,6 +809,10 @@ export class Actors {
       }
     }
     this.syncExtras(dt, t);
+    for (const n of this.npcs.values()) {
+      if (!n.used) n.group.visible = false;
+      n.used = false;
+    }
     const sel = ui.selected ? this.views.get(ui.selected) : null;
     this.selRing.visible = !!sel && sel.group.visible;
     if (sel) {

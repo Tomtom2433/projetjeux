@@ -29,7 +29,7 @@ import {
 import { onArrive, tickIncidents } from './incidents';
 import { line, lootText, nodeName, recall } from './text';
 import { cryOut, protest, thank, tickBanter, welcome } from './banter';
-import { setupDay, storageCap } from './state';
+import { recruit, setupDay, storageCap } from './state';
 import { tickDirector } from './director';
 import { breakSynchro, coverCallouts, coverer, creditSynchro } from './cover';
 import { aptitude, gainXp, hasPerk, levelUp, practise } from './perks';
@@ -1129,7 +1129,9 @@ export function nextDay(s: GameState, ev: SimEvent[]) {
   s.persistent.noMedicine = false;
   s.resources.medicine = Math.max(0, s.resources.medicine - 1);
   s.day++;
+  const joined = recruit(s);
   setupDay(s, ev);
+  for (const text of joined) systemMsg(s, ev, text, 'report');
   ev.push({ type: 'phase' });
 }
 

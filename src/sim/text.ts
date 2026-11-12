@@ -135,7 +135,7 @@ export function line(s: GameState, sv: Survivor, key: string, vars: Record<strin
   if (pool.length > 1 && s.flags[memo] === pool[idx]) idx = (idx + 1) % pool.length;
   let text = pool[idx];
   s.flags[memo] = text;
-  if (sv.id === 'jo') text = masculine(text);
+  if (sv.id === 'jo' || sv.id === 'sacha') text = masculine(text);
   return text.replace(/\{(\w+)\}/g, (_, k) => String(vars[k] ?? ''));
 }
 

@@ -238,6 +238,8 @@ class Game implements GameApi {
     this.save();
     if (this.s.phase === 'gameover') return this.newGame();
     if (this.s.phase === 'running') this.snapshotDay();
+    // someone rescued yesterday may have joined the team: they need a body on the map
+    if (this.s.survivors.length !== this.actors.count) this.rebuild(this.s);
     if (night && this.s.phase === 'running') {
       this.sceneLock = true;
       this.playScene(night, () => {

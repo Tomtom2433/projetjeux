@@ -309,3 +309,65 @@ export function buyUpgrade(s: GameState, key: keyof Shelter): boolean {
   s.shelter[key]++;
   return true;
 }
+
+/** People brought back to ECHO-7 who can take the field: they join the team the morning after their rescue. */
+const RECRUITS: Record<string, { flag: string; make: () => Survivor; line: string }> = {
+  ines: {
+    flag: 'inesRescued',
+    line: 'Inès Duval rejoint l’équipe de terrain. « Vous m’avez sortie de Saint-Roch. Je ne vais pas rester à compter les compresses. »',
+    make: () =>
+      makeSurvivor({
+        id: 'ines',
+        name: 'Inès Duval',
+        short: 'Inès',
+        role: 'Infirmière',
+        color: '#4fa89a',
+        traits: ['Méthodique', 'Endurante'],
+        equipment: ['Sac de soins'],
+        courage: 55,
+        trust: 72,
+        fear: 20,
+        medic: true,
+        skill: { scout: 2, retrieve: 3, hold: 2, rescue: 5 },
+        carryCap: 3,
+        relations: { mara: 68, jo: 50, lena: 55 },
+        memory: [{ day: 0, time: 0, text: 'Sortie de Saint-Roch sur ordre de la radio.', tone: 0.6 }],
+      }),
+  },
+  sacha: {
+    flag: 'sachaRescued',
+    line: 'Sacha rejoint l’équipe de terrain. Mila reste à l’abri, sous la table du poste radio. « Ramenez-moi chaque soir, c’est tout ce que je demande. »',
+    make: () =>
+      makeSurvivor({
+        id: 'sacha',
+        name: 'Sacha Morel',
+        short: 'Sacha',
+        role: 'Bricoleur',
+        color: '#b08a5c',
+        traits: ['Prudent', 'Père'],
+        equipment: ['Trousse à outils'],
+        courage: 48,
+        trust: 60,
+        fear: 30,
+        speed: 0.97,
+        melee: true,
+        skill: { scout: 3, retrieve: 4, hold: 4, rescue: 2 },
+        carryCap: 4,
+        relations: { mara: 60, jo: 58, lena: 62 },
+        memory: [{ day: 0, time: 0, text: 'Trouvé aux Tanneurs avec sa fille. Il regarde la porte toutes les dix minutes.', tone: 0.3 }],
+      }),
+  },
+};
+
+/** Add the rescued who are ready to go out. Returns what to announce. */
+export function recruit(s: GameState): string[] {
+  const out: string[] = [];
+  for (const [id, r] of Object.entries(RECRUITS)) {
+    if (!s.persistent[r.flag] || s.survivors.some((v) => v.id === id) || s.survivors.length >= 5) continue;
+    const sv = r.make();
+    for (const o of s.survivors) o.relations[id] = id === 'ines' && o.id === 'mara' ? 68 : 55;
+    s.survivors.push(sv);
+    out.push(r.line);
+  }
+  return out;
+}

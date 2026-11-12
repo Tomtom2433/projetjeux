@@ -249,7 +249,7 @@ export class Ui {
     window.addEventListener('keydown', (e) => {
       if (e.key === ' ') this.g.togglePause();
       else if (e.key === 'Escape') this.screen && this.screen !== 'title' && this.g.s.awaiting === null ? this.close() : this.g.cancelOrder();
-      else if (e.key >= '1' && e.key <= '3') this.g.select(this.g.s.survivors[+e.key - 1]?.id ?? null, true);
+      else if (e.key >= '1' && e.key <= '5') this.g.select(this.g.s.survivors[+e.key - 1]?.id ?? null, true);
     });
   }
 
