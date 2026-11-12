@@ -33,7 +33,7 @@ import { recruit, setupDay, storageCap } from './state';
 import { tickDirector } from './director';
 import { breakSynchro, coverCallouts, coverer, creditSynchro } from './cover';
 import { aptitude, gainXp, hasPerk, levelUp, practise } from './perks';
-import { settleSides } from './side';
+import { boosted, settleSides } from './side';
 import { ORDER_LABEL } from './text';
 import { LAST_DAY, buildEnding, mission, objective, objectiveStatus, type ObjectiveStatus } from './missions';
 
@@ -795,7 +795,7 @@ function vitals(s: GameState, sv: Survivor, dt: number, prox: Proximity) {
 function updateLink(s: GameState, sv: Survivor, ev: SimEvent[]) {
   const sig = survivorSignal(s, sv);
   const was = sv.linked;
-  sv.linked = was ? sig >= LINK_THRESHOLD - 0.02 : sig >= LINK_THRESHOLD + 0.02;
+  sv.linked = boosted(s, sv) || (was ? sig >= LINK_THRESHOLD - 0.02 : sig >= LINK_THRESHOLD + 0.02);
   if (sv.linked) {
     const p = survivorPos(sv);
     sv.lastReport = { x: p.x, z: p.z, node: zoneOf(sv), time: s.time, mode: sv.mode };

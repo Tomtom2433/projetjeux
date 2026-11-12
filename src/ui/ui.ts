@@ -12,6 +12,7 @@ import { audio, type Channel } from './audio';
 import { applyPrefs, storedDifficulty, storedSafe, storedText, storeSafe, storeText } from './prefs';
 import { DIFFICULTY } from '../sim/core';
 import { assistable, sideStatus, type AssistKind } from '../sim/side';
+import { MINI_TEXT, MiniGames } from './minigames';
 import { GUIDES, MANUAL, TIPS, markSeen, resetSeen, wasSeen } from './guide';
 import { ITEMS, canUseItem, type ItemId } from '../sim/items';
 import { VERSION, buildReport } from './report';
@@ -60,12 +61,6 @@ export interface GameApi {
   stats(): { calls: number; tris: number; scale: number; ms: number; tier: string };
   view(): { x: number; z: number; zoom: number };
 }
-
-const MINI_TEXT: Record<AssistKind, { title: string; say: string; verb: string; good: string; mid: string; bad: string }> = {
-  scout: { title: 'Mise au point', say: '{n} règle ses jumelles. Dites-lui quand l’image est nette : touchez quand le repère passe dans la zone claire.', verb: 'Net !', good: 'Image parfaite : elle lit la rue d’un coup d’œil, et les rues voisines avec.', mid: 'C’est mieux. Elle gagne quelques secondes.', bad: 'Flou. Elle se débrouillera sans vous.' },
-  retrieve: { title: 'Crochetage', say: '{n} force une serrure. Elle cède par crans : touchez quand le repère est sur le cran.', verb: 'Cran !', good: 'Ouvert sans un bruit. La fouille va beaucoup plus vite.', mid: 'Ça finit par céder. Un peu de temps gagné.', bad: 'Le crochet a ripé. La fouille prendra son temps.' },
-  rescue: { title: 'Gestes de secours', say: 'Guidez {n} par radio : compressions en rythme. Touchez quand le repère est dans la zone.', verb: 'Maintenant !', good: 'Rythme tenu. Le blessé reviendra à lui en bien meilleur état.', mid: 'Rythme inégal. Ça aidera un peu.', bad: 'Trop tôt, trop tard. Les gestes seront les siens, pas les vôtres.' },
-};
 
 const diffSeg = () => `<div class="seg">${DIFFICULTY.map((d, i) => `<button class="${storedDifficulty() === i ? 'on' : ''}" data-act="difficulty" data-arg="${i}">${d.name}</button>`).join('')}</div>`;
 
@@ -316,7 +311,6 @@ export class Ui {
       case 'guide-reset': resetSeen(); Tutorial.reset(); this.toast('Les guides et la formation reviendront.'); break;
       case 'tip-ok': this.tipId = null; break;
       case 'mini': this.startMini(arg.split(':')[0], arg.split(':')[1] as AssistKind); break;
-      case 'mini-hit': this.miniHit(); break;
       case 'report': {
         const st = g.stats();
         const text = buildReport({ Jour: g.s.day, Difficulté: DIFFICULTY[storedDifficulty()].name, Qualité: st.tier, 'Image (ms)': st.ms.toFixed(1) });
@@ -339,7 +333,7 @@ export class Ui {
 
   open(screen: Screen) {
     this.screen = screen;
-    this.el.overlay.hidden = screen === null || screen === 'scene';
+    this.el.overlay.hidden = screen === null || screen === 'scene' || screen === 'mini';
     this.el.hud.hidden = screen === 'title' || screen === 'scene' || !this.g.started;
     this.cache.delete(this.el.overlay);
     this.render();
@@ -406,42 +400,15 @@ export class Ui {
   }
 
   // ---------------------------------------------------------------- helping by hand
-  private mini: { sv: string; name: string; kind: AssistKind; round: number; hits: number[]; pos: number; dir: number; speed: number; zone: [number, number]; done: boolean; score: number; wait: number } | null = null;
+  private minis = new MiniGames();
   private startMini(svId: string, kind: AssistKind) {
     const sv = this.g.s.survivors.find((v) => v.id === svId);
-    if (!sv) return;
-    this.mini = { sv: svId, name: sv.short, kind, round: 0, hits: [], pos: 0, dir: 1, speed: 0.75, zone: [0.52, 0.76], done: false, score: 0, wait: 0 };
+    if (!sv || this.minis.active) return;
     this.open('mini');
-  }
-  private miniHit() {
-    const m = this.mini;
-    if (!m) return;
-    if (m.done) {
-      this.g.assist(m.sv, m.kind, m.score);
-      this.mini = null;
+    this.minis.start(kind, sv.short, (score) => {
+      this.g.assist(svId, kind, score);
       this.open(null);
-      return;
-    }
-    if (m.wait > 0) return;
-    const mid = (m.zone[0] + m.zone[1]) / 2;
-    const half = (m.zone[1] - m.zone[0]) / 2;
-    const off = Math.abs(m.pos - mid);
-    m.hits.push(off <= half ? 1 - (off / half) * 0.4 : off <= half * 1.6 ? 0.3 : 0);
-    navigator.vibrate?.(off <= half ? 20 : [30, 40, 30]);
-    m.round++;
-    if (m.round >= 3) {
-      m.done = true;
-      m.score = m.hits.reduce((a, b) => a + b, 0) / 3;
-    } else {
-      // each try is faster, with a narrower window somewhere else
-      m.speed += 0.3;
-      const w = 0.24 - m.round * 0.05;
-      const start = 0.15 + ((m.round * 0.37 + m.hits[0] * 0.2) % 0.55);
-      m.zone = [start, start + w];
-      m.wait = 0.35;
-    }
-    this.cache.delete(this.el.overlay);
-    this.render();
+    });
   }
 
   /** The team's Synchro chain changed. */
@@ -514,15 +481,6 @@ export class Ui {
     this.now = t;
     this.edges();
     this.tutorial.frame(this.g.started && this.screen === null && s.phase === 'running' && s.awaiting === null);
-    if (this.mini && this.screen === 'mini' && !this.mini.done) {
-      const m = this.mini;
-      m.wait = Math.max(0, m.wait - dt);
-      m.pos += m.dir * m.speed * Math.min(0.05, dt);
-      if (m.pos > 1) { m.pos = 1; m.dir = -1; }
-      if (m.pos < 0) { m.pos = 0; m.dir = 1; }
-      const cur = document.getElementById('mg-cur');
-      if (cur) cur.style.left = `${(m.pos * 100).toFixed(1)}%`;
-    }
     // advice waits for the training card to be out of the way
     const coach = document.getElementById('coach')!;
     if (this.tipId && this.tutorial.index < 0 && this.screen === null && this.g.started) {
@@ -871,15 +829,6 @@ export class Ui {
       html = `<div class="sheet">${head('Comment jouer', 'Manuel de l’opérateur', false)}<div class="body about manual">
         ${MANUAL.map((m) => `<h4>${m.title}</h4>${m.lines.map((l) => `<p>${l}</p>`).join('')}`).join('')}
         </div><div class="actions"><button class="btn" data-act="guide-reset">Revoir les guides et la formation</button><button class="btn primary" data-act="open" data-arg="${this.g.started ? 'settings' : 'title'}">Retour</button></div></div>`;
-    } else if (this.screen === 'mini' && this.mini) {
-      const m = this.mini;
-      const T = MINI_TEXT[m.kind];
-      html = `<div class="sheet mini" data-act="mini-hit">${head(T.title, `${m.name} · essai ${Math.min(3, m.round + 1)} / 3`, false)}<div class="body">
-        <p class="mg-say">${T.say.replace('{n}', m.name)}</p>
-        <div class="mg-bar"><i class="mg-zone" style="left:${(m.zone[0] * 100).toFixed(1)}%;width:${((m.zone[1] - m.zone[0]) * 100).toFixed(1)}%"></i><i class="mg-cur" id="mg-cur"></i></div>
-        <div class="mg-dots">${[0, 1, 2].map((i) => `<i class="${m.hits[i] === undefined ? '' : m.hits[i] > 0.5 ? 'ok' : m.hits[i] > 0 ? 'mid' : 'bad'}"></i>`).join('')}</div>
-        <p class="mg-res">${m.done ? (m.score >= 0.75 ? T.good : m.score > 0.3 ? T.mid : T.bad) : 'Touchez quand le repère est dans la zone.'}</p>
-        </div><div class="actions"><button class="btn primary" data-act="mini-hit">${m.done ? 'Continuer' : T.verb}</button></div></div>`;
     } else if (this.screen === 'about') {
       html = `<div class="sheet">${head('À propos', `Version ${VERSION}`, false)}<div class="body about">
         <h4>Le jeu</h4><p>LAST SIGNAL est un jeu de stratégie et de survie : vous dirigez par radio trois survivants qui décident eux-mêmes s’ils vous obéissent.</p>

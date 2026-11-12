@@ -81,9 +81,11 @@ Glisser pour déplacer la caméra, pincer ou molette pour zoomer, mini-carte pou
 - **Objectifs secondaires** (`src/sim/side.ts`) : deux par journée, tirés selon la graine et le jour (personne
   repéré, personne à terre, rentrés une minute avant la nuit, 4 ressources, Synchro ×3). Chacun rapporte
   12 XP à toute l'équipe et une ration.
-- **Aider à la main** : quand un survivant part observer, fouiller ou secourir, un bouton « Aider » lance une
-  épreuve de précision en trois essais (mise au point, crochetage, gestes de secours). Réussie, elle raccourcit le
-  travail ou ramène le blessé en meilleur état. Toujours facultative.
+- **Aider à la main** (`src/ui/minigames.ts`) : un bouton « Aider » propose un mini-jeu facultatif selon la
+  situation. Balayage aux jumelles (reconnaissance : toucher les silhouettes rouges, pas les bleues),
+  crochetage (fouille : trois crans à saisir), garrot (secours : maintenir puis relâcher dans la zone),
+  accord de fréquence (liaison perdue : superposer deux ondes pour rétablir la voix 10 à 30 s). Le résultat
+  raccourcit le travail, ramène le blessé en meilleur état ou rend la liaison un moment.
 - **Guides** (`src/ui/guide.ts`) : manuel complet (« Comment jouer »), guide affiché à la première ouverture de
   chaque écran (radio, équipe, abri, débrief, réglages) et rappelable par « ? », conseils de Mara la première
   fois qu'un événement survient (refus, liaison perdue, blessure, Synchro, nuit proche…).

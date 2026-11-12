@@ -53,7 +53,8 @@ export const MANUAL: { title: string; lines: string[] }[] = [
   {
     title: 'Aider à la main',
     lines: [
-      'Quand un survivant observe, fouille ou part secourir, un bouton <b>Aider</b> apparaît en bas. Il lance une épreuve de quelques secondes ; bien réussie, elle accélère le travail ou ramène le blessé en meilleur état. Elle est toujours facultative.',
+      'Quand un survivant part observer, fouiller ou secourir, ou quand sa liaison tombe, un bouton <b>Aider</b> apparaît en bas. Il lance une épreuve de quelques secondes, toujours facultative ; « Laisser faire » la referme sans rien coûter.',
+      '<b>Balayage aux jumelles</b> (reconnaissance) : toucher les silhouettes rouges, pas les bleues. <b>Crochetage</b> (fouille) : toucher quand le repère passe sur le cran. <b>Garrot</b> (secours) : maintenir, puis relâcher dans la zone. <b>Accorder la fréquence</b> (liaison perdue) : superposer les deux ondes pour rétablir la voix un moment.',
     ],
   },
   {

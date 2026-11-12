@@ -53,9 +53,13 @@ export function settleSides(s: GameState): string[] {
   return notes;
 }
 
-export type AssistKind = 'scout' | 'retrieve' | 'rescue';
+export type AssistKind = 'scout' | 'retrieve' | 'rescue' | 'signal';
+/** A patched-up link holds for a while even out of range. */
+export const boosted = (s: GameState, sv: Survivor) => s.time < Number(s.flags['boost_' + sv.id] ?? -1);
 /** What the operator can help with right now for this survivor, if anything. */
 export function assistable(s: GameState, sv: Survivor): AssistKind | null {
+  // out of range: the operator can try to pull the voice back out of the noise, once per loss
+  if (sv.alive && !sv.linked && sv.mode !== 'down' && !s.flags[`tuned_${sv.id}_${Math.floor(sv.lastReport.time)}`]) return 'signal';
   if (!sv.alive || !sv.linked || sv.mode !== 'order' || !sv.order) return null;
   const o = sv.order;
   const key = `assist_${sv.id}_${o.type}_${o.target ?? ''}_${Math.floor(o.issuedAt)}`;
@@ -69,7 +73,13 @@ export function assistable(s: GameState, sv: Survivor): AssistKind | null {
 /** Apply the result of a mini-game, `score` from 0 (missed everything) to 1 (perfect). */
 export function assist(s: GameState, svId: string, kind: AssistKind, score: number, ev: SimEvent[]) {
   const sv = survivor(s, svId);
-  if (!sv || !sv.order) return;
+  if (!sv) return;
+  if (kind === 'signal') {
+    s.flags[`tuned_${sv.id}_${Math.floor(sv.lastReport.time)}`] = true;
+    if (score >= 0.3) s.flags['boost_' + sv.id] = s.time + (score >= 0.7 ? 30 : 10);
+    return;
+  }
+  if (!sv.order) return;
   const o = sv.order;
   s.flags[`assist_${sv.id}_${o.type}_${o.target ?? ''}_${Math.floor(o.issuedAt)}`] = true;
   const q = Math.min(1, Math.max(0, score));
