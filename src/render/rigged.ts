@@ -262,6 +262,9 @@ export class ClipFigure implements Figure {
   private w: Record<string, number> = { idle: 1 };
   private last = 0;
   private side = new THREE.Vector3(1, 0, 0);
+  /** A calm standing pose built from the rest pose: arms down by the sides. Used whenever nothing else plays. */
+  private stand: Record<string, THREE.Quaternion> = {};
+  private spine: { bone: THREE.Bone; world: THREE.Quaternion; inv: THREE.Quaternion } | null = null;
 
   constructor(gltf: THREE.Object3D, private data: Record<string, ClipData>, height: number, shadows: boolean) {
     gltf.removeFromParent();
@@ -300,15 +303,35 @@ export class ClipFigure implements Figure {
         this.bones.push({ bone, rest: bone.quaternion.clone(), name: bone.name });
         pos[bone.name] = bone.getWorldPosition(new THREE.Vector3());
         if (bone.name === 'Hips') this.hips = { bone, rest: bone.position.clone() };
-        if (bone.name === 'Head') {
+        if (bone.name === 'Head' || bone.name === 'Spine01') {
           const world = bone.getWorldQuaternion(new THREE.Quaternion());
-          this.head = { bone, world, inv: world.clone().invert() };
+          const ref = { bone, world, inv: world.clone().invert() };
+          if (bone.name === 'Head') this.head = ref;
+          else this.spine = ref;
         }
       }
     });
     const fwd = new THREE.Vector3(0, 0, 1);
     if (pos.LeftToeBase && pos.LeftFoot) fwd.copy(pos.LeftToeBase).sub(pos.LeftFoot).setY(0).normalize();
     if (pos.LeftArm && pos.RightArm) this.side.copy(pos.LeftArm).sub(pos.RightArm).setY(0).normalize();
+    // arms: from the T of the rest pose to hanging, a little away from the hips, elbows barely bent
+    const byName: Record<string, THREE.Bone> = {};
+    for (const b of this.bones) byName[b.name] = b.bone;
+    for (const [arm, fore, k] of [['LeftArm', 'LeftForeArm', 1], ['RightArm', 'RightForeArm', -1]] as const) {
+      if (!byName[arm] || !pos[arm] || !pos[fore]) continue;
+      const dir = pos[fore].clone().sub(pos[arm]).normalize();
+      const want = new THREE.Vector3().copy(this.side).multiplyScalar(0.16 * k).add(new THREE.Vector3(0, -1, 0)).addScaledVector(fwd, 0.05).normalize();
+      const down = new THREE.Quaternion().setFromUnitVectors(dir, want);
+      const w = byName[arm].getWorldQuaternion(new THREE.Quaternion());
+      this.stand[arm] = w.clone().invert().multiply(down).multiply(w);
+      if (byName[fore]) {
+        // the bend that ends up pointing forward once the arm hangs
+        let bend = new THREE.Quaternion().setFromAxisAngle(UP, 0.28);
+        if (dir.clone().applyQuaternion(bend).applyQuaternion(down).dot(fwd) < dir.clone().applyQuaternion(down).dot(fwd)) bend = new THREE.Quaternion().setFromAxisAngle(UP, -0.28);
+        const wf = byName[fore].getWorldQuaternion(new THREE.Quaternion());
+        this.stand[fore] = wf.clone().invert().multiply(bend).multiply(wf);
+      }
+    }
     const h = Math.max(0.001, box.max.y - box.min.y);
     const inner = new THREE.Group();
     inner.add(gltf);
@@ -319,7 +342,7 @@ export class ClipFigure implements Figure {
   }
 
   private has(name: string) {
-    return !!this.data[name];
+    return name === 'idle' || !!this.data[name];
   }
 
   pose(p: Pose) {
@@ -348,8 +371,9 @@ export class ClipFigure implements Figure {
         sum += v;
       }
     }
+    const standW = (this.w.idle ?? 0) / (sum || 1);
     const active = Object.entries(this.w)
-      .filter(([name]) => this.has(name))
+      .filter(([name]) => name !== 'idle' && this.has(name))
       .map(([name, weight]) => {
         const c = this.data[name];
         // strides are scrubbed by distance; everything else runs on the clock
@@ -358,10 +382,15 @@ export class ClipFigure implements Figure {
         const i0 = Math.floor(f);
         return { c, weight: weight / (sum || 1), i0, i1: Math.min(c.n - 1, i0 + 1), a: f - i0 };
       });
-    if (!active.length) return;
     for (const b of this.bones) {
-      let acc = 0;
-      let first = true;
+      // start from the calm standing pose, then blend in whatever clips are playing
+      let acc = standW;
+      let first = standW <= 0;
+      if (!first) {
+        const sq = this.stand[b.name];
+        if (sq) qc.copy(sq);
+        else qc.identity();
+      }
       for (const cl of active) {
         const r = cl.c.rot[b.name];
         if (!r) continue;
@@ -394,6 +423,13 @@ export class ClipFigure implements Figure {
       }
       const hh = hb.rest.y || 1;
       hb.bone.position.set(hb.rest.x + x * hh, hb.rest.y + y * hh, hb.rest.z + z * hh);
+    }
+    // breathing, and a slow shift of weight, while standing
+    if (this.spine && standW > 0.02) {
+      qa.setFromAxisAngle(this.side, Math.sin(t * 1.7) * 0.022 * standW);
+      qb.setFromAxisAngle(UP, Math.sin(t * 0.37) * 0.05 * standW);
+      qa.multiply(qb);
+      this.spine.bone.quaternion.multiply(qb.copy(this.spine.inv)).multiply(qa).multiply(qb.copy(this.spine.world));
     }
     // the head can still turn and nod on top of whatever the body is doing
     if (this.head && (p.look || p.nod)) {
