@@ -40,6 +40,8 @@ export interface GameApi {
   buy(key: keyof Shelter): void;
   perk(svId: string, perkId: string): void;
   skipTutorial(): void;
+  orderNow(id: string, type: OrderType, node: NodeId | null): void;
+  advanceUntil(done: () => boolean, maxSeconds: number): void;
   endDayNow(): void;
   nextDay(): void;
   newGame(training?: boolean): void;
@@ -277,7 +279,6 @@ export class Ui {
       case 'confirm-next': g.queueOrder(); break;
       case 'item': g.useItem(arg as ItemId); break;
       case 'tut-next': this.tutorial.next(); break;
-      case 'tut-skip': this.tutorial.finish(); g.skipTutorial(); break;
       case 'tut-reset': Tutorial.reset(); this.toast('La formation reviendra à la prochaine nouvelle partie.'); break;
       case 'cancel': g.cancelOrder(); break;
       case 'choice': g.choose(arg); break;

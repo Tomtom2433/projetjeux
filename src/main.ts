@@ -312,6 +312,16 @@ class Game implements GameApi {
   }
 
   /** Debug/testing helper: advance the simulation without rendering until a decision is needed. */
+  /** Training helpers: give an order outright, or let time run until something has happened. */
+  orderNow(id: string, type: OrderType, node: NodeId | null) {
+    this.cancelOrder();
+    this.select(id);
+    issueOrder(this.s, id, type, node, this.ev);
+  }
+  advanceUntil(done: () => boolean, maxSeconds: number) {
+    for (let i = 0; i < maxSeconds / TICK && !done() && this.s.phase === 'running' && this.s.awaiting === null; i++) step(this.s, TICK, this.ev);
+  }
+
   debugAdvance(seconds: number) {
     for (let i = 0; i < seconds / TICK && this.s.phase === 'running' && this.s.awaiting === null; i++) step(this.s, TICK, this.ev);
   }
