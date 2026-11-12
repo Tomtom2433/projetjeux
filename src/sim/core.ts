@@ -8,6 +8,14 @@ export const clamp = (v: number, lo = 0, hi = 100) => Math.min(hi, Math.max(lo, 
 export const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
 
 /** Deterministic RNG (mulberry32) whose state lives in the save file. */
+/** Difficulty chosen for the run: 0 calm, 1 normal, 2 hard. Scales how easily survivors are spotted and hurt. */
+export const DIFFICULTY = [
+  { name: 'Calme', detect: 0.75, damage: 0.65, note: 'Les infectés repèrent moins vite et frappent moins fort.' },
+  { name: 'Normal', detect: 1, damage: 1, note: 'L’expérience prévue.' },
+  { name: 'Dur', detect: 1.2, damage: 1.35, note: 'Repérés plus vite, blessés plus fort, et pas de seconde chance.' },
+] as const;
+export const difficulty = (s: GameState) => DIFFICULTY[Math.min(2, Math.max(0, Number(s.persistent.difficulty ?? 1)))];
+
 export function rnd(s: GameState): number {
   s.rng = (s.rng + 0x6d2b79f5) | 0;
   let t = s.rng;

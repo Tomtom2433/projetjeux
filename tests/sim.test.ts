@@ -275,3 +275,24 @@ describe('dialogue scenes', () => {
     expect(nightScene(s)!.lines.every((l) => l.who !== 'jo' && !l.acts?.jo)).toBe(true);
   });
 });
+
+import { queueOrder } from '../src/sim/sim';
+
+describe('order chaining', () => {
+  it('carries out the queued order once the first is done', () => {
+    const s = newGame(11);
+    const ev: SimEvent[] = [];
+    const lena = s.survivors.find((v) => v.id === 'lena')!;
+    lena.trust = 100;
+    lena.courage = 100;
+    s.awaiting = null; // the briefing has been read
+    lena.at = 'gate';
+    expect(queueOrder(s, 'lena', 'hold', 'gate', ev)).toBe(false); // nothing to chain after
+    issueOrder(s, 'lena', 'retreat', null, ev);
+    expect(lena.order?.type).toBe('retreat');
+    expect(queueOrder(s, 'lena', 'hold', 'gate', ev)).toBe(true);
+    for (let i = 0; i < 400 && lena.nextOrder; i++) step(s, 0.25, ev);
+    expect(lena.nextOrder).toBeNull();
+    expect(lena.order?.type).toBe('hold');
+  });
+});

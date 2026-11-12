@@ -199,6 +199,19 @@ export function setupDay(s: GameState, ev: SimEvent[]) {
   s.threats = [];
   for (const [at, size, state] of m.threats)
     s.threats.push({ id: s.nextThreatId++, at, to: null, progress: 0, size, state, target: null, goal: null, timer: 10 + rnd(s) * 20, seen: false });
+  if (s.day >= 1) {
+    // No two runs of the same day are laid out alike: a cache somewhere new, and sometimes a pack where it was quiet.
+    const spots = ['quay_n', 'quay_s', 'east_s', 'east_n', 'apts'];
+    const spot = spots[Math.floor(rnd(s) * spots.length)];
+    const res = (['supplies', 'medicine', 'parts'] as const)[Math.floor(rnd(s) * 3)];
+    s.loot[spot] ??= { supplies: 0, medicine: 0, parts: 0 };
+    s.loot[spot][res] += 1;
+    if (rnd(s) < 0.5) {
+      const lairs = ['quay_n', 'east_s', 'lock_e', 'east_n'];
+      const at = lairs[Math.floor(rnd(s) * lairs.length)];
+      s.threats.push({ id: s.nextThreatId++, at, to: null, progress: 0, size: 1 + Math.floor(rnd(s) * 2), state: 'wander', target: null, goal: null, timer: 20 + rnd(s) * 30, seen: false });
+    }
+  }
 
   s.incidents = {};
   for (const id of ['bridge', 'hospital', 'unknown', 'logbook', 'vogel', 'boat']) s.incidents[id] = { state: m.incidents.includes(id) ? 'pending' : 'resolved' };

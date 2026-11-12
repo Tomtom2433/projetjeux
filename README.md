@@ -72,6 +72,18 @@ Glisser pour déplacer la caméra, pincer ou molette pour zoomer, mini-carte pou
   le suivant passe à la suite ; « Passer la scène » ou Échap l'interrompt.
 - **Personnages 3D réalistes** (`public/models`) : Mara, Jo et Lena sont des modèles texturés avec squelette,
   animés par le code (marche, course, accroupi, port). Le squelette est reconnu par sa forme, pas par ses noms.
+- **Son** (`src/ui/audio.ts`) : tout est synthétisé, sans fichier audio. Vent, pluie selon l'orage, crépitement
+  du brasero quand la caméra est sur la cour, nappe musicale qui se tend avec le danger (battement de cœur),
+  bruitages (coup, grognement, fusée, Synchro, ordre reçu ou refusé, fin de journée). Quatre volumes séparés.
+- **Difficulté** : Calme, Normal, Dur (détection et dégâts). En Calme et Normal, une journée perdue peut être
+  rejouée depuis son début, avec d'autres tirages ; pas en Dur.
+- **Ordres enchaînés** : quand un survivant a déjà un ordre, « Ensuite » programme le suivant, transmis dès qu'il
+  est libre.
+- **Journées variables** : à chaque partie, une cache change de place et une meute peut apparaître ailleurs.
+- **Carnet de l'opérateur** (`src/ui/profile.ts`) : statistiques et 11 succès, conservés entre les parties.
+- **Confort** : taille du texte (3 niveaux), palette d'ordres adaptée au daltonisme, symbole par type d'ordre.
+- **Signalement** (`src/ui/report.ts`) : les erreurs restent sur l'appareil ; « Copier le rapport » dans les
+  réglages produit un diagnostic à coller dans un message. Écran « À propos » : crédits et confidentialité.
 - **Abri** : antenne, infirmerie, générateur, réserve (2 niveaux chacun, visibles dans la cour).
 - **Débrief** : pertes, secourus, butin, conséquences, signaux non résolus.
 - **Sauvegarde locale** automatique (`localStorage`), simulation déterministe par graine.

@@ -98,6 +98,8 @@ export interface Survivor {
   order: Order | null;
   /** Order transmitted while the link was down; delivered when the signal returns. */
   pendingOrder: Order | null;
+  /** Order to carry out once the current one is finished (one step ahead, no more). */
+  nextOrder?: Order | null;
   work: number;
   think: number;
   carrying: Stock;
@@ -224,6 +226,6 @@ export type SimEvent =
   | { type: 'deposit'; survivor: string }
   | { type: 'link'; survivor: string; linked: boolean }
   | { type: 'flare'; node: NodeId }
-  | { type: 'order'; survivor: string; result: 'ack' | 'refused' | 'queued' }
+  | { type: 'order'; survivor: string; result: 'ack' | 'refused' | 'queued' | 'next' }
   | { type: 'sync'; value: number; survivor: string; by: string; found: string | null }
   | { type: 'phase' };

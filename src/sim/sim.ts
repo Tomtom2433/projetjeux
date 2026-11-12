@@ -24,8 +24,7 @@ import {
   survivorSignal,
   syncObservations,
   systemMsg,
-  zoneOf,
-} from './core';
+  zoneOf, difficulty } from './core';
 import { onArrive, tickIncidents } from './incidents';
 import { line, lootText, nodeName, recall } from './text';
 import { cryOut, protest, thank, tickBanter, welcome } from './banter';
@@ -133,6 +132,15 @@ export function issueOrder(s: GameState, svId: string, type: OrderType, target: 
   }
   deliverOrder(s, sv, order, ev);
   return { ok: true };
+}
+
+/** Plan one order ahead: it is transmitted the moment the current one is done. */
+export function queueOrder(s: GameState, svId: string, type: OrderType, target: NodeId | null, ev: SimEvent[]): boolean {
+  const sv = survivor(s, svId);
+  if (!sv || !sv.alive || !sv.order || (type !== 'hold' && type !== 'retreat' && !target)) return false;
+  sv.nextOrder = { type, target: type === 'retreat' ? 'shelter' : target, stage: 'go', issuedAt: s.time };
+  ev.push({ type: 'order', survivor: sv.id, result: 'next' });
+  return true;
 }
 
 // ---------------------------------------------------------------- movement
@@ -461,6 +469,7 @@ function encounter(s: GameState, sv: Survivor, prox: Proximity, ev: SimEvent[]) 
       if (sv.escort.patient) p *= 1.3;
       if (stockTotal(sv.carrying) > 0) p *= 1.1;
       p *= 1 - darkness(s) * 0.2;
+      p *= difficulty(s).detect;
       if (rnd(s) < p) {
         th.state = 'hunt';
         th.target = sv.id;
@@ -474,7 +483,7 @@ function encounter(s: GameState, sv: Survivor, prox: Proximity, ev: SimEvent[]) 
     if (th.target !== sv.id) continue;
     // The pack is on them.
     if (rnd(s) < Math.min(0.4, 0.1 + 0.05 * th.size)) {
-      sv.health -= (4 + rnd(s) * 8) * (hasPerk(sv, 'thick') ? 0.7 : 1);
+      sv.health -= (4 + rnd(s) * 8) * (hasPerk(sv, 'thick') ? 0.7 : 1) * difficulty(s).damage;
       sv.fear = clamp(sv.fear + 8);
       ev.push({ type: 'hit', survivor: sv.id });
       if (sv.order) shiftTrust(sv, -1);
@@ -823,6 +832,18 @@ export function step(s: GameState, dt: number, ev: SimEvent[]) {
 
   tickIncidents(s, ev);
   if (s.awaiting !== null) return;
+
+  // orders planned ahead leave as soon as the survivor is free, still standing and on the air
+  for (const sv of s.survivors) {
+    if (!sv.nextOrder) continue;
+    if (!sv.alive || sv.mode === 'down') sv.nextOrder = null;
+    else if (!sv.order && sv.linked && sv.mode === 'idle') {
+      const o = sv.nextOrder;
+      sv.nextOrder = null;
+      o.issuedAt = s.time;
+      deliverOrder(s, sv, o, ev);
+    }
+  }
 
   if (second) {
     for (const th of s.threats) th.seen = false;

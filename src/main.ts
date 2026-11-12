@@ -4,7 +4,7 @@ import './style.css';
 import type { GameState, NodeId, OrderType, Shelter, SimEvent, Survivor } from './sim/types';
 import { NODE, edgePoints } from './sim/world';
 import { darkness, findPath, previewPath, stormLevel, survivor, survivorPos, zoneOf } from './sim/core';
-import { TICK, endDay, issueOrder, nextDay, resolveChoice, step, validTargets } from './sim/sim';
+import { TICK, endDay, issueOrder, nextDay, resolveChoice, step, validTargets, queueOrder } from './sim/sim';
 import { buyUpgrade, newGame } from './sim/state';
 import { choosePerk } from './sim/perks';
 import { clearSave, loadGame, saveGame } from './sim/save';
@@ -17,6 +17,11 @@ import { audio } from './ui/audio';
 import { Tutorial } from './ui/tutorial';
 import { introScene, nightScene, type Scene } from './sim/scenes';
 import { Cine } from './ui/cine';
+import { watchErrors } from './ui/report';
+
+watchErrors();
+import { countRun, recordDay } from './ui/profile';
+import { storedDifficulty, storeDifficulty } from './ui/prefs';
 import { portrait } from './ui/ui';
 import { coverMap } from './sim/cover';
 import '@fontsource/special-elite/latin-400.css';
@@ -111,6 +116,9 @@ class Game implements GameApi {
   newGame(training?: boolean) {
     clearSave();
     this.rebuild(newGame(undefined, training ?? !Tutorial.seen()));
+    this.s.persistent.difficulty = storedDifficulty();
+    this.snapshotDay();
+    countRun();
     // a first game opens on the three of them talking, before the operator ever speaks
     const intro = this.s.day === 0 ? introScene(this.s) : null;
     if (intro) {
@@ -130,6 +138,8 @@ class Game implements GameApi {
     Tutorial.markSeen();
     clearSave();
     this.rebuild(newGame());
+    this.s.persistent.difficulty = storedDifficulty();
+    this.snapshotDay();
     this.begin();
   }
 
@@ -173,6 +183,13 @@ class Game implements GameApi {
     this.routeTimer = 0;
   }
 
+  /** Keep the current order and line this one up behind it. */
+  queueOrder() {
+    if (!this.selected || !this.orderType || !this.chosen) return;
+    queueOrder(this.s, this.selected, this.orderType, this.chosen, this.ev);
+    this.cancelOrder();
+  }
+
   cancelOrder() {
     this.orderType = null;
     this.targets = [];
@@ -213,6 +230,7 @@ class Game implements GameApi {
     this.selected = null;
     this.save();
     if (this.s.phase === 'gameover') return this.newGame();
+    if (this.s.phase === 'running') this.snapshotDay();
     if (night && this.s.phase === 'running') {
       this.sceneLock = true;
       this.playScene(night, () => {
@@ -223,6 +241,37 @@ class Game implements GameApi {
     }
   }
   private sceneLock = false;
+
+  /** Keep the state as it was when the day began, so a lost day can be played again. */
+  private snapshotDay() {
+    try {
+      localStorage.setItem('last-signal.daystart', JSON.stringify(this.s));
+    } catch {
+      /* storage full or unavailable: no retry, the game still runs */
+    }
+  }
+  canRetryDay(): boolean {
+    try {
+      const raw = localStorage.getItem('last-signal.daystart');
+      return !!raw && Number(this.s.persistent.difficulty ?? 1) < 2 && (JSON.parse(raw) as GameState).day === this.s.day;
+    } catch {
+      return false;
+    }
+  }
+  /** Same day, same situation, different dice. */
+  retryDay() {
+    if (!this.canRetryDay()) return;
+    const s = JSON.parse(localStorage.getItem('last-signal.daystart')!) as GameState;
+    s.rng = ((Date.now() & 0x7fffffff) || 1) | 0;
+    s.persistent.retries = Number(s.persistent.retries ?? 0) + 1;
+    this.rebuild(s);
+    this.snapshotDay();
+    this.begin();
+  }
+  setDifficulty(d: number) {
+    storeDifficulty(d);
+    if (this.started) this.s.persistent.difficulty = d;
+  }
   private cine = new Cine(this.stage, () => this.actors, () => this.s, portrait);
 
   /** Play a dialogue scene in the yard, then hand the game back. */
@@ -289,21 +338,35 @@ class Game implements GameApi {
       } else if (e.type === 'order') {
         const sv = survivor(this.s, e.survivor);
         if (sv) this.ui.orderFeedback(sv, e.result);
+        audio.sfx(e.result === 'refused' ? 'refuse' : 'order');
       } else if (e.type === 'sync') {
         this.ui.onSync(e.value, e.found);
+        audio.sfx('sync');
       } else if (e.type === 'hit') {
         this.actors.onHit(e.survivor);
+        audio.sfx('hit');
         if (e.survivor === this.selected) this.stage.shake(0.5);
       }
       else if (e.type === 'noise') {
-        if (this.s.intel[e.node].seenAt >= this.s.time - 3) this.actors.pulse(e.node);
+        if (this.s.intel[e.node].seenAt >= this.s.time - 3) {
+          this.actors.pulse(e.node);
+          audio.sfx('growl');
+        }
       } else if (e.type === 'flare') {
         this.city.flare(NODE[e.node].x, NODE[e.node].z);
+        audio.sfx('flare');
         this.actors.pulse(e.node, 0xff5a3a);
       } else if (e.type === 'phase') {
         this.save();
-        if (this.s.phase === 'debrief') this.ui.open('debrief');
-        else if (this.s.phase === 'ending') this.ui.open('ending');
+        if (this.s.phase === 'debrief') {
+          for (const name of recordDay(this.s, false)) this.ui.toast(`<b>Succès</b> ${name}`, 'ok');
+          this.ui.open('debrief');
+          audio.sfx(this.s.survivors.some((v) => v.alive) ? 'dayend' : 'down');
+        }
+        else if (this.s.phase === 'ending') {
+          for (const name of recordDay(this.s, true)) this.ui.toast(`<b>Succès</b> ${name}`, 'ok');
+          this.ui.open('ending');
+        }
         else if (this.s.phase === 'running' && !this.sceneLock) {
           this.ui.open(this.s.awaiting !== null ? 'radio' : null);
           if (this.s.day > 0) Tutorial.markSeen();
@@ -383,6 +446,10 @@ class Game implements GameApi {
     this.stage.render();
     this.ui.frame(dt, this.t);
     this.cine.frame(dt);
+    const trouble = this.started && s.phase === 'running' ? Math.max(0, ...s.survivors.map((v) => (!v.alive ? 0 : v.mode === 'down' || v.mode === 'fight' ? 1 : v.mode === 'flee' ? 0.8 : v.mode === 'hide' ? 0.5 : 0))) : 0;
+    const v = this.stage.view;
+    const nearFire = Math.max(0, 1 - Math.hypot(v.x - -41, v.z - 21.5) / 14) * Math.max(0, 1 - v.zoom / 30);
+    audio.scene({ storm, dark, danger: trouble, fire: this.started ? nearFire : 0, menu: this.ui.screen !== null && this.ui.screen !== 'scene' }, dt);
     if (mood) document.getElementById('rain')!.style.opacity = String(mood.storm * 0.9);
   }
 }

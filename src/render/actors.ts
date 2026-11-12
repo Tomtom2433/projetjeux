@@ -666,7 +666,7 @@ export class Actors {
         if (tag.className !== cls) tag.className = cls;
         const oc = sv.linked && sv.mode === 'order' && sv.order ? ORDER_COLOR[sv.order.stage === 'return' ? 'retreat' : sv.order.type] : '';
         const cov = sv.linked && sv.mode !== 'idle' && zoneOf(sv) !== 'shelter' ? coverer(s, sv) : null;
-        const html = `<b>${sv.short}</b>${ui.selected === sv.id || sv.mode !== 'idle' || !sv.linked ? `<i${oc ? ` style="color:${oc}"` : ''}>${state}</i>` : ''}${cov ? `<em>◈ couvert par ${cov.short}</em>` : ''}`;
+        const html = `<b>${sv.short}</b>${ui.selected === sv.id || sv.mode !== 'idle' || !sv.linked ? `<i${oc ? ` style="color:${oc}"` : ''}>${oc && sv.order ? ORDER_GLYPH[sv.order.stage === 'return' ? 'retreat' : sv.order.type] + ' ' : ''}${state}</i>` : ''}${cov ? `<em>◈ couvert par ${cov.short}</em>` : ''}`;
         if (tag.dataset.h !== html) {
           tag.dataset.h = html;
           tag.innerHTML = html;
@@ -839,6 +839,9 @@ function interiorCenter(id: NodeId): { x: number; z: number } {
   if (id === 'hosp_in') return { x: 58, z: -26 };
   return { x: 56, z: 34 };
 }
+
+/** One shape per order, so the order type never rests on colour alone. */
+const ORDER_GLYPH: Record<string, string> = { scout: '◉', retrieve: '▣', hold: '◆', retreat: '↩', rescue: '✚' };
 
 function orderWord(sv: Survivor): string {
   const o = sv.order!;

@@ -8,11 +8,15 @@ import { LAST_DAY, mission, objectiveStatus } from '../sim/missions';
 import { LEVELS, PERKS, aptitude, levelProgress, perkOffer } from '../sim/perks';
 import { MODE_LABEL, NPCS, ORDER_COLOR, ORDER_LABEL, fmtClock, fmtTime, nodeName } from '../sim/text';
 import { storedTier, storeTier, type Tier } from '../render/quality';
-import { audio } from './audio';
+import { audio, type Channel } from './audio';
+import { applyPrefs, storedDifficulty, storedSafe, storedText, storeSafe, storeText } from './prefs';
+import { DIFFICULTY } from '../sim/core';
+import { VERSION, buildReport } from './report';
+import { ACHIEVEMENTS, loadProfile } from './profile';
 import { synchro } from '../sim/cover';
 import { Tutorial } from './tutorial';
 
-export type Screen = 'title' | 'radio' | 'roster' | 'shelter' | 'debrief' | 'ending' | 'settings' | 'scene' | null;
+export type Screen = 'about' | 'profile' | 'title' | 'radio' | 'roster' | 'shelter' | 'debrief' | 'ending' | 'settings' | 'scene' | null;
 
 export interface GameApi {
   s: GameState;
@@ -28,6 +32,7 @@ export interface GameApi {
   select(id: string | null, focus?: boolean): void;
   pickOrder(t: OrderType): void;
   confirmOrder(): void;
+  queueOrder(): void;
   cancelOrder(): void;
   choose(choiceId: string): void;
   buy(key: keyof Shelter): void;
@@ -36,6 +41,9 @@ export interface GameApi {
   endDayNow(): void;
   nextDay(): void;
   newGame(training?: boolean): void;
+  canRetryDay(): boolean;
+  retryDay(): void;
+  setDifficulty(d: number): void;
   continueGame(): void;
   hasSave(): boolean;
   focus(x: number, z: number): void;
@@ -45,6 +53,8 @@ export interface GameApi {
   stats(): { calls: number; tris: number; scale: number; ms: number; tier: string };
   view(): { x: number; z: number; zoom: number };
 }
+
+const diffSeg = () => `<div class="seg">${DIFFICULTY.map((d, i) => `<button class="${storedDifficulty() === i ? 'on' : ''}" data-act="difficulty" data-arg="${i}">${d.name}</button>`).join('')}</div>`;
 
 const svg = (d: string, extra = '') => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${extra}<path d="${d}"/></svg>`;
 const ICON: Record<string, string> = {
@@ -212,6 +222,14 @@ export class Ui {
     this.el.status.className = 'panel';
     this.el.orders.className = 'panel';
     this.tutorial = new Tutorial(g);
+    applyPrefs();
+    document.addEventListener('input', (e) => {
+      const t = e.target as HTMLInputElement;
+      if (t.dataset?.vol) {
+        audio.unlock();
+        audio.setVolume(t.dataset.vol as Channel, Number(t.value) / 100);
+      }
+    });
     document.addEventListener('click', (e) => {
       const t = (e.target as HTMLElement).closest<HTMLElement>('[data-act]');
       if (!t) return;
@@ -248,6 +266,7 @@ export class Ui {
       case 'goto': g.select(arg, true); break;
       case 'order': g.pickOrder(arg as OrderType); break;
       case 'confirm': g.confirmOrder(); break;
+      case 'confirm-next': g.queueOrder(); break;
       case 'tut-next': this.tutorial.next(); break;
       case 'tut-skip': this.tutorial.finish(); g.skipTutorial(); break;
       case 'tut-reset': Tutorial.reset(); this.toast('La formation reviendra à la prochaine nouvelle partie.'); break;
@@ -263,6 +282,19 @@ export class Ui {
       case 'continue': g.continueGame(); break;
       case 'tier': storeTier(arg as Tier | 'auto'); location.reload(); break;
       case 'sound': audio.setMuted(!audio.muted); this.render(); break;
+      case 'retry': g.retryDay(); break;
+      case 'report': {
+        const st = g.stats();
+        const text = buildReport({ Jour: g.s.day, Difficulté: DIFFICULTY[storedDifficulty()].name, Qualité: st.tier, 'Image (ms)': st.ms.toFixed(1) });
+        void (navigator.clipboard?.writeText(text) ?? Promise.reject()).then(
+          () => this.toast('Rapport copié : collez-le dans votre message.'),
+          () => this.toast('Copie impossible sur ce navigateur.', 'bad'),
+        );
+        break;
+      }
+      case 'difficulty': g.setDifficulty(Number(arg)); this.render(); break;
+      case 'text': storeText(Number(arg)); this.render(); break;
+      case 'safe': storeSafe(!storedSafe()); this.render(); break;
       case 'voice': audio.setVoice(!audio.voice); this.render(); if (audio.voice) audio.speak('ECHO-7, ici Mara. Vous me recevez ?', 'mara'); break;
       case 'perf': this.showPerf = !this.showPerf; this.el.perf.hidden = !this.showPerf; this.render(); break;
       case 'skip': this.typed = 1e9; break;
@@ -329,8 +361,8 @@ export class Ui {
   }
 
   /** Make the outcome of a transmitted order impossible to miss. */
-  orderFeedback(sv: Survivor, result: 'ack' | 'refused' | 'queued') {
-    const label = { ack: 'ordre reçu', refused: 'refuse l’ordre', queued: 'hors réseau — ordre en attente' }[result];
+  orderFeedback(sv: Survivor, result: 'ack' | 'refused' | 'queued' | 'next') {
+    const label = { ack: 'ordre reçu', refused: 'refuse l’ordre', queued: 'hors réseau — ordre en attente', next: 'enchaînera dès que possible' }[result];
     this.toast(`<b>${sv.short}</b> ${label}`, result === 'ack' ? 'ok' : result === 'refused' ? 'bad' : 'wait', sv.color);
     this.flash.set(sv.id, { cls: result === 'ack' ? 'f-ok' : result === 'refused' ? 'f-bad' : 'f-wait', until: this.now + 1.6 });
     if (result === 'refused') navigator.vibrate?.([40, 60, 40]);
@@ -428,7 +460,7 @@ export class Ui {
       this.el.team,
       s.survivors
         .map((sv) => {
-          const st = !sv.alive ? (sv.missing ? 'Disparu·e' : 'Mort·e') : !sv.linked ? (sv.pendingOrder ? `⏳ ${ORDER_LABEL[sv.pendingOrder.type]} en attente du signal` : `Signal perdu · ${fmtTime(s.time - sv.lastReport.time)}`) : sv.mode === 'order' && sv.order ? `${sv.order.stage === 'return' ? 'Retour' : ORDER_LABEL[sv.order.type]}${sv.order.target && sv.order.stage !== 'return' && sv.order.type !== 'retreat' ? ' · ' + nodeName(sv.order.target) : ''}` : `${MODE_LABEL[sv.mode]} · ${nodeName(zoneOf(sv))}`;
+          const st = !sv.alive ? (sv.missing ? 'Disparu·e' : 'Mort·e') : !sv.linked ? (sv.pendingOrder ? `⏳ ${ORDER_LABEL[sv.pendingOrder.type]} en attente du signal` : `Signal perdu · ${fmtTime(s.time - sv.lastReport.time)}`) : sv.mode === 'order' && sv.order ? `${sv.order.stage === 'return' ? 'Retour' : ORDER_LABEL[sv.order.type]}${sv.order.target && sv.order.stage !== 'return' && sv.order.type !== 'retreat' ? ' · ' + nodeName(sv.order.target) : ''}${sv.nextOrder ? ' ▸ ' + ORDER_LABEL[sv.nextOrder.type] : ''}` : `${MODE_LABEL[sv.mode]} · ${nodeName(zoneOf(sv))}`;
           const cls = !sv.alive ? '' : !sv.linked ? 'lost' : ['flee', 'down', 'fight'].includes(sv.mode) ? 'danger' : '';
           const fl = this.flash.get(sv.id);
           const fcls = fl && fl.until > this.now ? fl.cls : '';
@@ -454,7 +486,7 @@ export class Ui {
         this.set(
           o,
           `<div class="confirm" style="--oc:${ORDER_COLOR[g.orderType]}"><p><b>${sel.short} → ${ORDER_LABEL[g.orderType]}</b> · ${nodeName(g.chosen)}<small>${len} m${risk ? ` · ☣ ${risk} signalés` : ''}${unknown ? ` · ${unknown} secteur${unknown > 1 ? 's' : ''} non reconnu${unknown > 1 ? 's' : ''}` : ''}${dead ? ' · zone sans signal' : ''}</small></p>
-           <button class="btn primary" data-act="confirm">Transmettre</button><button class="btn ghost" data-act="cancel">Annuler</button></div>`,
+           <button class="btn primary" data-act="confirm">${sel.order ? 'Maintenant' : 'Transmettre'}</button>${sel.order && sel.linked ? '<button class="btn" data-act="confirm-next">Ensuite</button>' : ''}<button class="btn ghost" data-act="cancel">Annuler</button></div>`,
         );
       } else if (g.orderType) {
         this.set(o, `<div class="confirm" style="--oc:${ORDER_COLOR[g.orderType]}"><p><b>${ORDER_LABEL[g.orderType]}</b><small>${g.targets.length ? 'Touchez une destination surlignée sur la carte.' : 'Aucune cible connue pour cet ordre.'}</small></p><button class="btn ghost" data-act="cancel">Annuler</button></div>`);
@@ -636,6 +668,9 @@ export class Ui {
           ${this.g.hasSave() ? '<button class="btn primary" data-act="continue">Continuer</button>' : ''}
           <button class="btn ${this.g.hasSave() ? '' : 'primary'}" data-act="new" data-arg="tuto">Nouvelle partie</button>
           ${Tutorial.seen() ? '<button class="btn ghost" data-act="new" data-arg="skip">Sans la formation</button>' : ''}
+          <button class="btn ghost" data-act="open" data-arg="profile">Carnet de l’opérateur</button>
+          <button class="btn ghost" data-act="open" data-arg="about">À propos</button>
+          <div class="diffrow"><small>Difficulté</small>${diffSeg()}</div>
         </div>
         <div class="row" style="justify-content:center;margin-top:14px"><div class="seg">${(['auto', 'low', 'medium', 'high'] as const).map((t) => `<button class="${tier === t ? 'on' : ''}" data-act="tier" data-arg="${t}">${{ auto: 'Auto', low: 'Léger', medium: 'Moyen', high: 'Élevé' }[t]}</button>`).join('')}</div></div>
         <footer>Tranche verticale 0.2 · hors-ligne · sauvegarde locale automatique</footer>
@@ -684,20 +719,41 @@ export class Ui {
           <div style="grid-column:1/-1"><h4>Progression</h4><div class="xprow">${s.survivors.filter((v) => v.alive).map((v) => `<div class="xp ${v.perkPoints > 0 ? 'up' : ''}" style="--c:${v.color}"><b>${v.short}</b><span>Niv. ${v.level}${d.xp?.[v.id] ? ` · +${d.xp[v.id]} XP` : ''}</span><span class="meter"><i style="width:${Math.round(levelProgress(v) * 100)}%"></i></span>${v.perkPoints > 0 ? '<em>★ compétence à choisir dans Équipe</em>' : ''}</div>`).join('')}</div></div>
           <div style="grid-column:1/-1"><h4>Conséquences</h4>${list(d.consequences, '—')}</div>
         </div></div>
-        <div class="actions"><button class="btn" data-act="open" data-arg="roster">${ICON.team} Équipe</button><button class="btn" data-act="open" data-arg="shelter">${ICON.home} Abri</button><button class="btn ghost" data-act="new">Nouvelle partie</button>${alive || d.day >= LAST_DAY ? `<button class="btn primary" data-act="nextday">${d.day >= LAST_DAY ? 'Épilogue' : 'Jour suivant'}</button>` : ''}</div></div>`;
+        <div class="actions"><button class="btn" data-act="open" data-arg="roster">${ICON.team} Équipe</button><button class="btn" data-act="open" data-arg="shelter">${ICON.home} Abri</button><button class="btn ghost" data-act="new">Nouvelle partie</button>${this.g.canRetryDay() && d.day > 0 ? `<button class="btn ${alive ? 'ghost' : 'primary'}" data-act="retry">Rejouer la journée</button>` : ''}${alive || d.day >= LAST_DAY ? `<button class="btn primary" data-act="nextday">${d.day >= LAST_DAY ? 'Épilogue' : 'Jour suivant'}</button>` : ''}</div></div>`;
     } else if (this.screen === 'ending' && s.ending) {
       html = `<div class="sheet debrief">${head('Dernier signal · épilogue', `${LAST_DAY} jours`, false)}<div class="body ending paper"><div class="scene" style="background-image:url(./art/s-${s.persistent.final === 'leave' ? 'boat' : 'final'}.webp)"></div>
         ${s.ending.map((l, i) => `<p style="animation-delay:${(i * 0.9).toFixed(1)}s">${esc(l)}</p>`).join('')}
         ${s.rescued.length ? `<div class="npcs" style="margin-top:12px">${[...new Set(s.rescued)].map((n) => NPCS[n]).filter(Boolean).map((n) => `<div class="npc"><div class="portrait">${portrait(n.id, n.color)}</div><div><b>${n.name}</b><small>${n.role}</small></div></div>`).join('')}</div>` : ''}
         </div><div class="actions"><button class="btn" data-act="open" data-arg="roster">${ICON.team} Équipe</button><button class="btn primary" data-act="new">Nouvelle partie</button></div></div>`;
+    } else if (this.screen === 'about') {
+      html = `<div class="sheet">${head('À propos', `Version ${VERSION}`, false)}<div class="body about">
+        <h4>Le jeu</h4><p>LAST SIGNAL est un jeu de stratégie et de survie : vous dirigez par radio trois survivants qui décident eux-mêmes s’ils vous obéissent.</p>
+        <h4>Confidentialité</h4><p>Le jeu fonctionne hors ligne. Sauvegarde, réglages, succès et rapports d’erreurs restent sur cet appareil ; aucune donnée n’est collectée ni transmise. Effacer les données du site dans le navigateur supprime tout.</p>
+        <h4>Crédits</h4><p>Conception et développement : Nytha IA. Illustrations, portraits et modèles 3D des personnages créés avec des outils d’IA générative (Magnific). Sons entièrement synthétisés par le jeu. Moteur 3D : three.js (licence MIT). Polices : Saira Stencil One et Special Elite (licence OFL).</p>
+        <h4>Avertissement</h4><p>Œuvre de fiction : situations de danger, blessures et morts de personnages. Déconseillé aux plus jeunes.</p>
+        </div><div class="actions"><button class="btn primary" data-act="open" data-arg="${this.g.started ? 'settings' : 'title'}">Retour</button></div></div>`;
+    } else if (this.screen === 'profile') {
+      const p = loadProfile();
+      const n = ACHIEVEMENTS.filter((a) => p.done[a.id]).length;
+      html = `<div class="sheet">${head('Carnet de l’opérateur', `${n} / ${ACHIEVEMENTS.length} succès`, false)}<div class="body">
+        <div class="pstats">${[['Parties', p.runs], ['Journées tenues', p.days], ['Secourus', p.rescued], ['Perdus', p.lost], ['Meilleure Synchro', '×' + p.bestSync], ['Fins vues', `${p.endings.length} / 2`]].map(([k, v]) => `<div><b>${v}</b><small>${k}</small></div>`).join('')}</div>
+        <div class="achs">${ACHIEVEMENTS.map((a) => `<div class="ach ${p.done[a.id] ? 'on' : ''}"><i>${p.done[a.id] ? '★' : '☆'}</i><div><b>${a.name}</b><small>${a.text}</small></div></div>`).join('')}</div>
+        </div><div class="actions"><button class="btn primary" data-act="open" data-arg="${this.g.started ? 'settings' : 'title'}">Retour</button></div></div>`;
     } else if (this.screen === 'settings') {
       const tier = storedTier();
       html = `<div class="sheet">${head('Réglages')}<div class="body"><div class="settings">
         <div class="row"><label>Qualité graphique<small>Recharge la page. La partie est sauvegardée.</small></label><div class="seg">${(['auto', 'low', 'medium', 'high'] as const).map((t) => `<button class="${tier === t ? 'on' : ''}" data-act="tier" data-arg="${t}">${{ auto: 'Auto', low: 'Léger', medium: 'Moyen', high: 'Élevé' }[t]}</button>`).join('')}</div></div>
-        <div class="row"><label>Son radio</label><button class="btn" data-act="sound">${audio.muted ? 'Coupé' : 'Activé'}</button></div>
+        <div class="row"><label>Son</label><button class="btn" data-act="sound">${audio.muted ? 'Coupé' : 'Activé'}</button></div>
+        ${([['master', 'Volume général'], ['ambience', 'Ambiance'], ['music', 'Musique'], ['sfx', 'Effets et radio']] as const).map(([ch, label]) => `<div class="row"><label>${label}</label><input type="range" min="0" max="100" value="${Math.round(audio.vol[ch] * 100)}" data-vol="${ch}" aria-label="${label}"></div>`).join('')}
+        <div class="row"><label>Difficulté<small>${DIFFICULTY[storedDifficulty()].note}</small></label>${diffSeg()}</div>
+        <div class="row"><label>Taille du texte</label><div class="seg">${['Normal', 'Grand', 'Très grand'].map((t, i) => `<button class="${storedText() === i ? 'on' : ''}" data-act="text" data-arg="${i}">${t}</button>`).join('')}</div></div>
+        <div class="row"><label>Couleurs adaptées<small>Palette des ordres lisible avec un daltonisme ; chaque ordre garde aussi son symbole.</small></label><button class="btn" data-act="safe">${storedSafe() ? 'Activées' : 'Désactivées'}</button></div>
         <div class="row"><label>Voix parlées<small>${audio.voiceAvailable ? 'Synthèse vocale du navigateur : hors-ligne, qualité variable selon l’appareil.' : 'Non disponible sur ce navigateur.'}</small></label><button class="btn" data-act="voice" ${audio.voiceAvailable ? '' : 'disabled'}>${audio.voice ? 'Activées' : 'Désactivées'}</button></div>
         <div class="row"><label>Profilage<small>FPS, draw calls, triangles, résolution dynamique.</small></label><button class="btn" data-act="perf">${this.showPerf ? 'Affiché' : 'Masqué'}</button></div>
         <div class="row"><label>Formation<small>La rejouer, guidée par Mara, à la prochaine nouvelle partie.</small></label><button class="btn" data-act="tut-reset">Réactiver</button></div>
+        <div class="row"><label>Carnet de l’opérateur<small>Statistiques et succès.</small></label><button class="btn" data-act="open" data-arg="profile">Ouvrir</button></div>
+        <div class="row"><label>Signaler un problème<small>Copie un rapport technique (version, écran, erreurs récentes). Rien n’est envoyé automatiquement.</small></label><button class="btn" data-act="report">Copier le rapport</button></div>
+        <div class="row"><label>À propos<small>Version ${VERSION} · crédits et confidentialité.</small></label><button class="btn" data-act="open" data-arg="about">Lire</button></div>
         <div class="row"><label>Plein écran</label><button class="btn" data-act="fullscreen">Activer</button></div>
         <div class="row"><label>Journée en cours<small>Ceux qui sont dehors passeront la nuit dehors.</small></label><button class="btn" data-act="endday">Terminer la journée</button><button class="btn ghost" data-act="new">Nouvelle partie</button></div>
       </div></div></div>`;
