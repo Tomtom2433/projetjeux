@@ -511,3 +511,28 @@ body.cine #labels, body.cine #edges { display: none; }
 #ticker, #team .chip { zoom: var(--txt); }
 .tag.sv b { font-size: calc(11px * var(--txt)); }
 .tag.sv i, .tag.sv em { font-size: calc(9.5px * var(--txt)); }
+
+/* portrait phones: buttons on the first row, status under them, minimap top right, orders at the very bottom */
+@media (max-aspect-ratio: 1/1) {
+  #topright { left: calc(8px + var(--sl)); justify-content: space-between; gap: 4px; }
+  #topright .btn { min-width: 0; flex: 1; padding-left: 0; padding-right: 0; justify-content: center; }
+  #topright .btn .lbl { display: none; }
+  #topright .res { flex: none; }
+  #status { top: calc(58px + var(--st)); right: calc(8px + var(--sr)); gap: 8px; }
+  #status .obj-line { display: block; flex: 1; min-width: 0; max-width: none; font-size: 10px; overflow: hidden; }
+  #team { top: calc(116px + var(--st)); width: 158px; }
+  #minimap { top: calc(116px + var(--st)); bottom: auto; width: 116px; height: 87px; }
+  #bottom { bottom: calc(8px + var(--sb)); }
+  #edges { display: none; }
+}
+/* the player can strip the interface down: compact keeps portraits and gauges, off keeps only the top buttons */
+body.hud-compact #minimap, body.hud-off #minimap, body.hud-off #team, body.hud-off #status, body.hud-off #ticker, body.hud-off #labels .tag i, body.hud-off #labels .tag em { display: none; }
+body.hud-compact #team { width: 52px; }
+body.hud-compact #team .chip { padding: 4px; display: flex; flex-direction: column; align-items: center; gap: 3px; zoom: 1; }
+body.hud-compact #team .chip > b, body.hud-compact #team .chip > .st, body.hud-compact #team .chip > .bars, body.hud-compact #team .chip .mw em, body.hud-compact #team .chip .mw:not(:first-child) { display: none; }
+body.hud-compact #team .chip .meters { width: 100%; display: block; }
+body.hud-compact #team .chip .mw { display: block; }
+body.hud-compact #status .obj-line, body.hud-compact #status .sig:first-child { display: none; }
+body.hud-off #topright .res, body.hud-off #topright .btn:not([data-act='hud']):not([data-act='pause']) { display: none; }
+body.hud-off #topright { left: auto; }
+body.hud-off #topright .btn { flex: none; min-width: 44px; }

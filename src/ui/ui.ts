@@ -65,6 +65,7 @@ const ICON: Record<string, string> = {
   home: svg('M3.5 11.5 12 4l8.5 7.5M6 10v9.5h12V10M10 19.5v-5h4v5'),
   pause: svg('M8 5v14M16 5v14'),
   play: svg('M7 4.5v15l12-7.5z'),
+  eye: svg('M2.5 12s3.5-6.5 9.5-6.5 9.5 6.5 9.5 6.5-3.5 6.5-9.5 6.5S2.5 12 2.5 12z', '<circle cx="12" cy="12" r="2.8"/>'),
   gear: svg('M12 3v2.5M12 18.5V21M3 12h2.5M18.5 12H21M5.6 5.6l1.8 1.8M16.6 16.6l1.8 1.8M5.6 18.4l1.8-1.8M16.6 7.4l1.8-1.8', '<circle cx="12" cy="12" r="3.6"/>'),
   pill: svg('M8.5 20.5a5 5 0 0 1-5-5c0-1.4.5-2.6 1.5-3.5l7-7a5 5 0 0 1 7 7l-7 7a4.9 4.9 0 0 1-3.5 1.5zM8.5 8.5l7 7'),
   crate: svg('M3.5 7.5 12 3l8.5 4.5v9L12 21l-8.5-4.5zM3.5 7.5 12 12l8.5-4.5M12 12v9'),
@@ -225,6 +226,11 @@ export class Ui {
     this.el.orders.className = 'panel';
     this.tutorial = new Tutorial(g);
     applyPrefs();
+    try {
+      this.setHud(Number(localStorage.getItem('last-signal.hud') ?? 0) % 3);
+    } catch {
+      /* ignore */
+    }
     document.addEventListener('input', (e) => {
       const t = e.target as HTMLInputElement;
       if (t.dataset?.vol) {
@@ -285,6 +291,7 @@ export class Ui {
       case 'continue': g.continueGame(); break;
       case 'tier': storeTier(arg as Tier | 'auto'); location.reload(); break;
       case 'sound': audio.setMuted(!audio.muted); this.render(); break;
+      case 'hud': this.setHud((this.hudMode + 1) % 3); break;
       case 'retry': g.retryDay(); break;
       case 'report': {
         const st = g.stats();
@@ -343,6 +350,21 @@ export class Ui {
     this.cardTimer = window.setTimeout(() => (el.hidden = true), 6500);
   }
   private cardTimer = 0;
+
+  /** 0 full interface, 1 compact (portraits only, no minimap), 2 hidden (top buttons only). */
+  hudMode = 0;
+  private setHud(mode: number) {
+    this.hudMode = mode;
+    document.body.classList.toggle('hud-compact', mode === 1);
+    document.body.classList.toggle('hud-off', mode === 2);
+    try {
+      localStorage.setItem('last-signal.hud', String(mode));
+    } catch {
+      /* ignore */
+    }
+    if (this.g?.started) this.toast(['Interface complète', 'Interface réduite', 'Interface masquée'][mode]);
+    this.timer = 0;
+  }
 
   /** The team's Synchro chain changed. */
   onSync(value: number, found: string | null) {
@@ -457,7 +479,8 @@ export class Ui {
        <button class="btn" data-act="open" data-arg="shelter">${ICON.home}<span class="lbl">Abri</span></button>
        <button class="btn" data-act="speed">×${g.speed}</button>
        <button class="btn ${g.paused ? 'act' : ''}" data-act="pause">${g.paused ? ICON.play : ICON.pause}</button>
-       <button class="btn" data-act="open" data-arg="settings">${ICON.gear}</button>`,
+       <button class="btn" data-act="open" data-arg="settings">${ICON.gear}</button>
+       <button class="btn ${this.hudMode ? 'act' : ''}" data-act="hud" title="Afficher ou masquer l’interface">${ICON.eye}</button>`,
     );
     this.set(
       this.el.team,
