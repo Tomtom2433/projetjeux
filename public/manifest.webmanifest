@@ -1,0 +1,13 @@
+{
+  "name": "LAST SIGNAL",
+  "short_name": "Last Signal",
+  "description": "Stratégie de survie isométrique : dirigez des survivants par radio.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "fullscreen",
+  "orientation": "landscape",
+  "background_color": "#0b0e14",
+  "theme_color": "#0b0e14",
+  "lang": "fr",
+  "icons": [{ "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }]
+}
