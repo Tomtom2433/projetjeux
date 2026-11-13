@@ -103,6 +103,8 @@ def slim(src, dst, size=768):
     return total
 
 if __name__ == '__main__':
+    if len(sys.argv) < 4 or sys.argv[1] not in ('clips', 'slim'):
+        sys.exit('usage: glb_clips.py clips <sortie.json> <nom> [<nom> ...]   (lit <nom>.glb dans le dossier courant)\n       glb_clips.py slim <entree.glb> <sortie.glb>')
     mode = sys.argv[1]
     if mode == 'clips':
         res = {}

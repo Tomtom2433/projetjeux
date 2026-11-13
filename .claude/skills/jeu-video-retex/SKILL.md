@@ -1,6 +1,6 @@
 ---
 name: jeu-video-retex
-description: Méthode et retour d'expérience pour concevoir, construire et faire évoluer un jeu vidéo avec Claude (web three.js/TypeScript en priorité, mais les principes valent ailleurs). À utiliser dès que l'utilisateur veut créer un jeu, un prototype jouable, une tranche verticale, ajouter une mécanique, un tutoriel, des animations de personnages, des mini-jeux, une interface de jeu mobile, des modèles 3D ou des images générées pour un jeu, ou demande « liste les manques », « améliore le gameplay », « go les jalons » sur un projet de jeu. Capitalise sur la session LAST SIGNAL : erreurs à ne pas refaire, idées qui ont marché, recettes techniques (squelettes et animations partagés, tests sans écran, déploiement).
+description: "Méthode et retour d'expérience pour concevoir, construire et faire évoluer un jeu vidéo avec Claude (web three.js/TypeScript en priorité, mais les principes valent ailleurs). À utiliser dès que l'utilisateur veut créer un jeu, un prototype jouable, une tranche verticale, ajouter une mécanique, un tutoriel, des animations de personnages, des mini-jeux, une interface de jeu mobile, des modèles 3D ou des images générées pour un jeu, ou demande « liste les manques », « améliore le gameplay », « go les jalons » sur un projet de jeu. Capitalise sur la session LAST SIGNAL : erreurs à ne pas refaire, idées qui ont marché, recettes techniques (squelettes et animations partagés, tests sans écran, déploiement)."
 ---
 
 # Construire un jeu avec Claude : méthode et retour d'expérience
